@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-apollo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apollo}
+      POSTGRES_DB: ${POSTGRES_DB:-apollo}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./warehouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-apollo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+
+  scraper:
+    build: ./scraper
+    ports:
+      - "8000:8000"
+    environment:
+      # Lake backend: "filesystem" (default, no extra service needed) or "s3"
+      # once you have a MinIO/S3 endpoint available — see infra/terraform-aws
+      # and the README for why MinIO isn't in this compose file by default.
+      APOLLO_LAKE_BACKEND: ${APOLLO_LAKE_BACKEND:-filesystem}
+      APOLLO_LAKE_PATH: /data/lake
+      APOLLO_WAREHOUSE_DSN: postgresql://${POSTGRES_USER:-apollo}:${POSTGRES_PASSWORD:-apollo}@postgres:5432/${POSTGRES_DB:-apollo}
+      APOLLO_LOG_LEVEL: ${APOLLO_LOG_LEVEL:-INFO}
+      APOLLO_LOG_DIR: /var/log/apollo
+      APOLLO_LOG_MAX_BYTES: ${APOLLO_LOG_MAX_BYTES:-5000000}
+      APOLLO_LOG_BACKUP_COUNT: ${APOLLO_LOG_BACKUP_COUNT:-10}
+      # Optional, for pages that require being logged in (see README/.env.example). Empty by default.
+      APOLLO_SOUNDCLOUD_COOKIES: ${APOLLO_SOUNDCLOUD_COOKIES:-}
+    volumes:
+      - ./data/lake:/data/lake
+      - ./logs:/var/log/apollo
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

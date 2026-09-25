@@ -1,0 +1,26 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.DS_Store
+._*
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Runtime data — regenerated locally, shouldn't live in git history
+data/
+logs/
+
+# Legacy pre-rewrite drafts, an unrelated third-party clone, and a one-off
+# backup bundle — none of this is part of the live app (superseded by
+# scraper/ and infra/terraform-aws/); excluded rather than deleted since
+# they're still pending your own cleanup pass. See the cleanup commands
+# given earlier in this project's history if/when you want them gone for real.
+0.0.1av/
+DB/
+testing/
+iterm/
+.legacy-git-history/

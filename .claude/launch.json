@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "apollo-scraper",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up"],
+      "port": 8000
+    },
+    {
+      "name": "apollo-adminer",
+      "url": "http://localhost:8081"
+    }
+  ]
+}

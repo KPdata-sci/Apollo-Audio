@@ -1,0 +1,8 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+playwright==1.47.0
+beautifulsoup4>=4.12
+boto3>=1.35
+psycopg[binary]>=3.2
+pydantic>=2.9
+pydantic-settings>=2.5

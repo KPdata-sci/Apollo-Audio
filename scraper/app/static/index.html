@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Apollo — SoundCloud Scraper</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2e38;
+    --text: #e6e8eb;
+    --muted: #9aa1ac;
+    --accent: #ff5500; /* soundcloud orange */
+    --accent-hover: #ff7733;
+    --danger: #e5484d;
+    --ok: #3ecf8e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 24px 32px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 24px 32px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .panel h2 { margin: 0 0 14px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .scrape-form { display: flex; gap: 8px; }
+  input[type="url"], input[type="search"] {
+    flex: 1;
+    background: #0d0f13;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { margin-top: 12px; font-size: 13px; min-height: 18px; }
+  .status.error { color: var(--danger); }
+  .status.ok { color: var(--ok); }
+  .browse-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  td.genre { color: var(--muted); white-space: nowrap; }
+  td.scraped_at { color: var(--muted); white-space: nowrap; font-size: 12px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .pager { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .pager button { padding: 6px 12px; font-weight: 500; }
+  .empty { color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
+  .catalog-controls { display: flex; gap: 8px; margin-bottom: 14px; }
+  select {
+    background: #0d0f13;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  select:focus { outline: none; border-color: var(--accent); }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .icon-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 9px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .icon-btn:hover:not(:disabled) { background: #0d0f13; border-color: var(--accent); color: var(--accent); }
+  .icon-btn.playing { background: var(--accent); border-color: var(--accent); color: white; }
+  td.actions { white-space: nowrap; }
+  td.actions .icon-btn + .icon-btn { margin-left: 6px; }
+  tr.player-row td { padding: 0; border-bottom: 1px solid var(--border); }
+  tr.player-row iframe { display: block; width: 100%; height: 120px; border: 0; }
+  .spinner {
+    display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+    animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: -1px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .browse-list { list-style: none; margin: 12px 0 0; padding: 0; max-height: 260px; overflow-y: auto; }
+  .browse-list li {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .browse-list li:hover { background: #0d0f13; }
+  .browse-list button { padding: 5px 12px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Project Apollo</h1>
+  <p>SoundCloud scraper — data lake → data warehouse</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Scrape a playlist / set</h2>
+
+    <div class="catalog-controls">
+      <select id="genre-select"><option value="">Choose a genre…</option></select>
+      <select id="playlist-select" disabled><option value="">Choose a playlist…</option></select>
+    </div>
+    <div class="divider">or paste a URL</div>
+
+    <form id="scrape-form" class="scrape-form">
+      <input type="url" id="scrape-url" placeholder="https://soundcloud.com/artist/sets/playlist" required>
+      <button type="submit" id="scrape-btn">Scrape</button>
+    </form>
+    <div id="scrape-status" class="status"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Browse a profile's playlists</h2>
+    <form id="browse-form" class="scrape-form">
+      <input type="url" id="browse-url" placeholder="https://soundcloud.com/some-artist" required>
+      <button type="submit" id="browse-btn">Browse</button>
+    </form>
+    <div id="browse-status" class="status"></div>
+    <div id="browse-results"></div>
+  </section>
+
+  <section class="panel">
+    <div class="browse-controls">
+      <h2 style="margin:0;">Tracks</h2>
+      <input type="search" id="search" placeholder="Filter by artist or title…" style="max-width: 260px;">
+    </div>
+    <div id="table-wrap"></div>
+    <div id="pager" class="pager"></div>
+  </section>
+</main>
+
+<script>
+const state = { search: "", limit: 25, offset: 0, total: 0, playingUrl: null };
+
+const scrapeForm = document.getElementById("scrape-form");
+const scrapeUrlInput = document.getElementById("scrape-url");
+const scrapeBtn = document.getElementById("scrape-btn");
+const scrapeStatus = document.getElementById("scrape-status");
+const searchInput = document.getElementById("search");
+const tableWrap = document.getElementById("table-wrap");
+const pager = document.getElementById("pager");
+const genreSelect = document.getElementById("genre-select");
+const playlistSelect = document.getElementById("playlist-select");
+const browseForm = document.getElementById("browse-form");
+const browseUrlInput = document.getElementById("browse-url");
+const browseBtn = document.getElementById("browse-btn");
+const browseStatus = document.getElementById("browse-status");
+const browseResults = document.getElementById("browse-results");
+
+async function loadCatalog() {
+  try {
+    const res = await fetch("/api/playlists");
+    if (!res.ok) return;
+    const catalog = await res.json();
+
+    for (const genre of Object.keys(catalog)) {
+      const opt = document.createElement("option");
+      opt.value = genre;
+      opt.textContent = genre;
+      genreSelect.appendChild(opt);
+    }
+
+    genreSelect.addEventListener("change", () => {
+      playlistSelect.innerHTML = '<option value="">Choose a playlist…</option>';
+      const entries = catalog[genreSelect.value] || [];
+      playlistSelect.disabled = entries.length === 0;
+      for (const entry of entries) {
+        const opt = document.createElement("option");
+        opt.value = entry.url;
+        opt.textContent = entry.note ? `${entry.name} ⚠` : entry.name;
+        opt.title = entry.note || "";
+        playlistSelect.appendChild(opt);
+      }
+    });
+
+    playlistSelect.addEventListener("change", () => {
+      if (playlistSelect.value) {
+        scrapeUrlInput.value = playlistSelect.value;
+        const selected = playlistSelect.options[playlistSelect.selectedIndex];
+        scrapeStatus.className = "status";
+        scrapeStatus.textContent = selected.title
+          ? `${selected.title} — click Scrape when ready.`
+          : "URL loaded — click Scrape when ready.";
+      }
+    });
+  } catch (err) {
+    console.error("Failed to load playlist catalog", err);
+  }
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString();
+}
+
+function escapeHtml(s) {
+  return (s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+async function loadTracks() {
+  const params = new URLSearchParams({
+    search: state.search, limit: state.limit, offset: state.offset
+  });
+  const res = await fetch(`/api/tracks?${params}`);
+  if (!res.ok) {
+    tableWrap.innerHTML = `<div class="empty">Failed to load tracks (HTTP ${res.status}).</div>`;
+    return;
+  }
+  const page = await res.json();
+  state.total = page.total;
+  renderTable(page.items);
+  renderPager();
+}
+
+function embedUrl(trackUrl) {
+  return `https://w.soundcloud.com/player/?url=${encodeURIComponent(trackUrl)}&color=%23ff5500&auto_play=true&show_artwork=false&visual=false`;
+}
+
+function renderTable(items) {
+  if (items.length === 0) {
+    tableWrap.innerHTML = `<div class="empty">No tracks yet — scrape a playlist above to get started.</div>`;
+    return;
+  }
+  const rows = items.map(t => {
+    const isPlaying = state.playingUrl === t.url;
+    const rowHtml = `
+    <tr data-url="${escapeHtml(t.url || "")}">
+      <td>${escapeHtml(t.artist)}</td>
+      <td>${t.url ? `<a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">${escapeHtml(t.title)}</a>` : escapeHtml(t.title)}</td>
+      <td class="genre">${escapeHtml(t.genre) || "—"}</td>
+      <td class="scraped_at">${fmtDate(t.scraped_at)}</td>
+      <td class="actions">
+        ${t.url ? `<button class="icon-btn play-btn ${isPlaying ? "playing" : ""}" data-url="${escapeHtml(t.url)}">${isPlaying ? "■ Stop" : "▶ Play"}</button>` : ""}
+        ${t.downloadable && t.url ? `<a class="icon-btn" href="${escapeHtml(t.url)}" target="_blank" rel="noopener" title="Opens the track's SoundCloud page — download only if the artist enabled it there">⬇ Download</a>` : ""}
+      </td>
+    </tr>`;
+    const playerHtml = isPlaying ? `
+    <tr class="player-row"><td colspan="5">
+      <iframe src="${embedUrl(t.url)}" allow="autoplay"></iframe>
+    </td></tr>` : "";
+    return rowHtml + playerHtml;
+  }).join("");
+
+  tableWrap.innerHTML = `
+    <table>
+      <thead>
+        <tr><th>Artist</th><th>Title</th><th>Genre</th><th>Scraped</th><th>Play</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+
+  // One track plays at a time: clicking Play on another row stops the current
+  // one first (no simultaneous/mass playback), and Stop just closes it.
+  tableWrap.querySelectorAll(".play-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const url = btn.dataset.url;
+      state.playingUrl = state.playingUrl === url ? null : url;
+      renderTable(items);
+    });
+  });
+}
+
+function renderPager() {
+  const from = state.total === 0 ? 0 : state.offset + 1;
+  const to = Math.min(state.offset + state.limit, state.total);
+  pager.innerHTML = `
+    <button id="prev-btn" ${state.offset === 0 ? "disabled" : ""}>Prev</button>
+    <span>${from}–${to} of ${state.total}</span>
+    <button id="next-btn" ${to >= state.total ? "disabled" : ""}>Next</button>
+  `;
+  document.getElementById("prev-btn").onclick = () => {
+    state.offset = Math.max(0, state.offset - state.limit);
+    loadTracks();
+  };
+  document.getElementById("next-btn").onclick = () => {
+    state.offset = state.offset + state.limit;
+    loadTracks();
+  };
+}
+
+let searchDebounce;
+searchInput.addEventListener("input", () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    state.search = searchInput.value;
+    state.offset = 0;
+    loadTracks();
+  }, 300);
+});
+
+browseForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const profileUrl = browseUrlInput.value.trim();
+  if (!profileUrl) return;
+
+  browseBtn.disabled = true;
+  browseStatus.className = "status";
+  browseStatus.innerHTML = `<span class="spinner"></span>Browsing — reading that profile's playlist index…`;
+  browseResults.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/discover-playlists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile_url: profileUrl })
+    });
+    const body = await res.json();
+
+    if (!res.ok) {
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+
+    if (body.playlists.length === 0) {
+      browseStatus.className = "status";
+      browseStatus.textContent = "No playlists found on that profile's /sets page.";
+      return;
+    }
+
+    browseStatus.className = "status ok";
+    browseStatus.textContent = `Found ${body.playlists.length} playlist(s). Pick one to load it into the scrape box above.`;
+
+    const items = body.playlists.map(p => `
+      <li>
+        <span>${escapeHtml(p.name)}</span>
+        <button type="button" class="load-playlist-btn" data-url="${escapeHtml(p.url)}">Load</button>
+      </li>
+    `).join("");
+    browseResults.innerHTML = `<ul class="browse-list">${items}</ul>`;
+
+    browseResults.querySelectorAll(".load-playlist-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        scrapeUrlInput.value = btn.dataset.url;
+        scrapeUrlInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        scrapeStatus.className = "status";
+        scrapeStatus.textContent = "URL loaded — click Scrape when ready.";
+      });
+    });
+  } catch (err) {
+    browseStatus.className = "status error";
+    browseStatus.textContent = err.message;
+  } finally {
+    browseBtn.disabled = false;
+  }
+});
+
+scrapeForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const url = scrapeUrlInput.value.trim();
+  if (!url) return;
+
+  scrapeBtn.disabled = true;
+  scrapeStatus.className = "status";
+  scrapeStatus.innerHTML = `<span class="spinner"></span>Scraping — this can take up to a minute…`;
+
+  try {
+    const res = await fetch("/scrape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+    const body = await res.json();
+
+    if (!res.ok) {
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+
+    scrapeStatus.className = "status ok";
+    scrapeStatus.textContent = `Scraped ${body.track_count} tracks → ${body.lake_object_key}`;
+    state.offset = 0;
+    await loadTracks();
+  } catch (err) {
+    scrapeStatus.className = "status error";
+    scrapeStatus.textContent = err.message;
+  } finally {
+    scrapeBtn.disabled = false;
+  }
+});
+
+loadCatalog();
+loadTracks();
+</script>
+
+</body>
+</html>
