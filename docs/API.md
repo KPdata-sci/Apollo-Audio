@@ -6,6 +6,8 @@ decoupled from the front end (`frontend/`, a separate nginx container/Service)
 
 Interactive docs (try-it-out, generated from the same code): `GET /docs` (Swagger UI) or `GET /redoc`.
 
+**Caching**: successful `GET /api/*` JSON responses carry a weak `ETag`. `GET /api/playlists` is `Cache-Control: public, max-age=3600`, because the catalog only changes on redeploy. Everything else is `no-cache`: the browser revalidates on every load and gets a body-less `304` when nothing changed, so the data is never stale after a scrape. Responses over 1KB are gzipped when the client accepts it.
+
 **Auth**: `POST /scrape` and `POST /api/discover-playlists` require an
 `X-API-Key` header matching `APOLLO_API_KEY` *when that setting is
 non-empty* — it's empty (no auth) by default for local dev. `GET /api/tracks`

@@ -1,11 +1,13 @@
+import hashlib
 import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -65,6 +67,36 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# The catalog only changes on redeploy, so browsers may reuse it for an hour
+# without asking. Everything else is revalidated every load: the browser sends
+# If-None-Match and gets a body-less 304 when the data hasn't changed, so the
+# library stays exactly current after a scrape while repeat loads stay cheap
+# (this matters on a phone over a relayed Tailscale link).
+_CACHE_POLICIES = {"/api/playlists": "public, max-age=3600"}
+
+
+# Registered before CORSMiddleware so CORS wraps it and 304s still carry the
+# CORS headers a cross-origin fetch needs.
+@app.middleware("http")
+async def etag_cache(request: Request, call_next):
+    response = await call_next(request)
+    if (
+        request.method != "GET"
+        or not request.url.path.startswith("/api/")
+        or response.status_code != 200
+        or not response.headers.get("content-type", "").startswith("application/json")
+    ):
+        return response
+
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    # Weak because GZipMiddleware may re-encode the body on the way out.
+    etag = f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
+    headers = {"ETag": etag, "Cache-Control": _CACHE_POLICIES.get(request.url.path, "no-cache")}
+    if etag in request.headers.get("if-none-match", ""):
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, status_code=200, headers={**dict(response.headers), **headers})
+
+
 # Only relevant once the front end is served from a different origin (see
 # frontend/) — same-origin requests (the old combined docker-compose setup)
 # never hit CORS checks at all. "*" is fine here because these endpoints don't
@@ -78,6 +110,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# JSON like the catalog (~12KB) compresses ~5x; small responses aren't worth it.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Each /scrape call drives a full headless browser — cheap to trigger, costly
 # to run. Per-IP limits (keyed by X-API-Key when set, since a shared tailnet

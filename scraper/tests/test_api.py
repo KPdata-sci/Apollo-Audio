@@ -214,6 +214,41 @@ def test_stats_endpoint_empty_warehouse(mock_get_stats):
     }
 
 
+@patch("app.main.warehouse.get_stats")
+def test_get_api_responses_revalidate_with_etag(mock_get_stats):
+    mock_get_stats.return_value = {
+        "total_tracks": 0, "total_sources": 0, "last_scraped_at": None, "genres": [], "sources": [],
+    }
+
+    first = client.get("/api/stats")
+    etag = first.headers["etag"]
+    assert first.headers["cache-control"] == "no-cache"
+
+    repeat = client.get("/api/stats", headers={"If-None-Match": etag})
+    assert repeat.status_code == 304
+    assert repeat.content == b""
+
+    mock_get_stats.return_value = {**mock_get_stats.return_value, "total_tracks": 1}
+    changed = client.get("/api/stats", headers={"If-None-Match": etag})
+    assert changed.status_code == 200
+    assert changed.headers["etag"] != etag
+
+
+def test_catalog_is_cacheable_and_gzipped():
+    resp = client.get("/api/playlists", headers={"Accept-Encoding": "gzip"})
+
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "public, max-age=3600"
+    assert resp.headers["content-encoding"] == "gzip"
+
+
+def test_write_endpoints_are_not_etagged():
+    resp = client.post("/scrape", json={"url": "http://example.com"})
+
+    assert resp.status_code == 422
+    assert "etag" not in resp.headers
+
+
 def test_playlist_catalog_endpoint_shape():
     # Contents are curated in scraper/app/playlists.py and may change freely —
     # only the shape is part of the API contract.
