@@ -5,6 +5,7 @@
 # root so this can reach scraper/app/static/ — see docker-compose.yml.
 FROM nginx:1.27-alpine
 
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY scraper/app/static/index.html /usr/share/nginx/html/index.html
 COPY frontend/40-apollo-config.sh /docker-entrypoint.d/40-apollo-config.sh
 RUN chmod +x /docker-entrypoint.d/40-apollo-config.sh
