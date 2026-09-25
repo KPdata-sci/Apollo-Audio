@@ -15,8 +15,15 @@ variable "frontend_image" {
 }
 
 variable "api_base_url" {
-  description = "The API's address as reached by a BROWSER (your phone, your laptop) — not a Kubernetes-internal DNS name, which nothing outside the cluster can resolve. E.g. a Tailscale address like \"http://100.x.y.z:30800\" once you know the API service's exposed port. Baked into the frontend container as APOLLO_API_BASE at startup (see frontend/40-apollo-config.sh)."
+  description = "Explicit override for the API's full address (e.g. \"https://api.example.com\"). Leave empty (the default) unless you have a reason to hardcode one: with it empty, the frontend instead derives the API's address at runtime from whatever host/IP the browser used to load the page, combined with api_port below — which is what lets the SAME deployment work correctly whether a viewer reaches it via a LAN IP, a Tailscale IP, or a NodePort's raw IP, instead of only whichever one address you hardcoded here."
   type        = string
+  default     = ""
+}
+
+variable "api_port" {
+  description = "The api Service's NodePort, used to derive the API's address as described in api_base_url above (a viewer's browser reaches the API on the same host it loaded the frontend from, just this port). Must match the api Service's node_port in api.tf (30800 by default)."
+  type        = string
+  default     = "30800"
 }
 
 variable "api_key" {
@@ -33,7 +40,7 @@ variable "cors_origins" {
 }
 
 variable "ingest_urls" {
-  description = "Comma-separated soundcloud.com playlist/profile URLs the scheduled ingest CronJob scrapes automatically (scraper/app/ingest.py). Empty (default) means the CronJob runs and does nothing — same \"no accounts baked into this repo\" rule as the UI catalog in playlists.py."
+  description = "Comma-separated soundcloud.com playlist/profile URLs the scheduled ingest CronJob scrapes automatically (scraper/app/ingest.py). Empty (default) means the CronJob runs and does nothing — pick URLs from the scraper/app/playlists.py catalog or add your own."
   type        = string
   default     = ""
 }
