@@ -167,6 +167,7 @@ pytest
 - `docs/CRAWLER_DESIGN.md` — scoping doc for indexing/crawling beyond one profile at a time (not fully built — see the doc for what's done vs. planned)
 - `docs/PUBLIC_ACCESS_DESIGN.md` — plan for reaching this remotely from a VPS (not yet built)
 - `infra/terraform-aws/` — unfinished sketch for a future real-AWS deployment (not wired into the local stack — see its README)
+- `infra/terraform-k8s/` — Terraform (Kubernetes provider) config for running this on a k3s host — a second PC, not the AWS one above — `terraform validate`-checked, not yet applied anywhere (see its README)
 - `docker-compose.yml` — wires scraper + postgres + adminer together
 
 ## Known limitations / next steps

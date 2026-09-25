@@ -7,7 +7,14 @@ design below optimizes for "keep strangers out entirely" rather than "let
 strangers in safely at scale." If that scope ever changes, most of this needs
 rethinking (see "If this ever needs to be genuinely multi-user" at the end).
 
-Target: a VPS/server you control, not a managed platform.
+**Target, updated**: not a cloud VPS — a second physical PC on your own
+network, hosting this via k3s (Kubernetes) with Terraform declaring the
+resources. That doesn't change anything below (Tailscale/reverse-proxy/
+hardening all apply the same way to a home PC as to a rented one), it just
+means "the box" is one you own rather than one you rent. The k3s/Terraform
+setup itself is in [infra/terraform-k8s/](../infra/terraform-k8s/README.md) —
+this doc stays focused on the network/access question (how you reach it),
+that one covers the orchestration question (what runs it).
 
 ## Recommended approach: put it on a private mesh network (Tailscale), don't expose it publicly at all
 
