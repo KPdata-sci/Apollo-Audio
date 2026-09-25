@@ -27,8 +27,8 @@ the order to do them.
 - The API image with the pipeline/ingest code, and the ingest CronJob.
 - The frontend's derive-the-API-from-hostname fix.
 
-**Not deployed yet:** the new API endpoints, the catalog and the new UI. The
-VM's frontend is still the old UI (see §3).
+**Update (later on 2026-09-25):** the new API endpoints, the catalog and the
+new UI are now deployed to the VM as well. Use §3 for future redeploys.
 
 ## 1. Finish the frontend review (Discover)
 
