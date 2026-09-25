@@ -1,0 +1,6 @@
+# frontend/40-apollo-config.sh runs inside a Linux container as /bin/sh — a
+# CRLF shebang line (which core.autocrlf=true would otherwise produce on
+# checkout here) makes it fail to execute. Force LF regardless of local git
+# config, same spirit as this repo's existing exFAT/AppleDouble notes in
+# CLAUDE.md about cross-platform file gotchas.
+*.sh text eol=lf

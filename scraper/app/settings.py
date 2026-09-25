@@ -32,14 +32,39 @@ class Settings(BaseSettings):
     # login wall (no test account was available while building this).
     soundcloud_cookies: str = ""
 
+    # Standalone-API deployment. When set, POST /scrape and POST
+    # /api/discover-playlists require a matching `X-API-Key` header (GET
+    # endpoints stay open either way). Empty (the default, and what
+    # docker-compose's local dev setup uses) means those endpoints are
+    # unauthenticated, same as before this setting existed. Set via
+    # APOLLO_API_KEY — never commit a real value.
+    api_key: str = ""
+
+    # Comma-separated list of origins allowed to call this API cross-origin
+    # (needed once the front end is served from a different origin than the
+    # API — see frontend/). "*" (default) allows any origin, which is fine for
+    # the GET endpoints but means don't rely on cookies/session auth here.
+    cors_origins: str = "*"
+
     # Logging
     log_level: str = "INFO"
     log_dir: str = "/var/log/apollo"
     log_max_bytes: int = 5_000_000  # rotate apollo.log once it exceeds this size
     log_backup_count: int = 10      # how many rotated (and gzipped) files to keep
 
+    # Scheduled ingest (scraper/app/ingest.py, run by the k8s CronJob in
+    # infra/terraform-k8s/ingest-cronjob.tf, or locally via
+    # `docker compose run --rm api python -m app.ingest`). Comma-separated
+    # soundcloud.com playlist/profile URLs. Empty by default — same "no
+    # accounts baked into this repo" rule as playlists.py; set your own via
+    # APOLLO_INGEST_URLS.
+    ingest_urls: str = ""
+
     class Config:
         env_prefix = "APOLLO_"
+
+    def ingest_urls_list(self) -> list[str]:
+        return [u.strip() for u in self.ingest_urls.split(",") if u.strip()]
 
 
 settings = Settings()

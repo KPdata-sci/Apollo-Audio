@@ -1,4 +1,11 @@
 resource "kubernetes_persistent_volume_claim" "postgres_data" {
+  # local-path (both k3s's and this cluster's default) uses WaitForFirstConsumer
+  # binding mode — the PV is only actually provisioned once a pod that mounts
+  # this PVC gets scheduled. Terraform's default wait_until_bound=true would
+  # otherwise block forever waiting for "Bound" before creating the deployment
+  # that's the only thing that can ever cause that binding to happen.
+  wait_until_bound = false
+
   metadata {
     name      = "postgres-data"
     namespace = kubernetes_namespace.apollo.metadata[0].name
@@ -46,6 +53,17 @@ resource "kubernetes_deployment" "postgres" {
           volume_mount {
             name       = "init"
             mount_path = "/docker-entrypoint-initdb.d"
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "256Mi"
+            }
+            limits = {
+              cpu    = "1"
+              memory = "1Gi"
+            }
           }
 
           readiness_probe {

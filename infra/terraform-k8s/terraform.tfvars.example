@@ -1,5 +1,52 @@
-# Copy to terraform.tfvars (gitignored) and fill in.
+# Copy to terraform.tfvars (gitignored — see ../../.gitignore) and fill in.
+# This example targets a real k3s host: a separate Linux VM (VirtualBox/
+# VMware/Hyper-V, bridged networking) or physical PC — see README "Setup:
+# k3s on a Linux VM/PC". For Docker Desktop's own Kubernetes on this same
+# Windows machine instead, see the commented-out block at the bottom.
 
-kubeconfig_path   = "~/.kube/config"
-scraper_image     = "ghcr.io/<you>/apollo-scraper:latest" # see README — must be pullable by the cluster, not just built locally
+# Copy of the VM's /etc/rancher/k3s/k3s.yaml, with the "server:" line's
+# 127.0.0.1 changed to the VM's actual (bridged) LAN IP. See README.
+kubeconfig_path = "~/.kube/apollo-vm-config"
+
+# The cluster can't see images `docker build` made on this Windows machine —
+# get them onto the VM first (push to a registry, or `docker save | gzip` +
+# `k3s ctr images import` on the VM — see README), then reference whatever
+# tag you gave them there.
+scraper_image  = "ghcr.io/<you>/apollo-api:latest"
+frontend_image = "ghcr.io/<you>/apollo-frontend:latest"
+
+# k3s's built-in default StorageClass.
+storage_class = "local-path"
+
+# Reachable at <vm-ip>:30800 (api) / <vm-ip>:30880 (frontend) with zero extra
+# setup — no ingress controller or LoadBalancer implementation needed. "ingress"
+# is the other option (k3s ships Traefik built in) if you'd rather have a
+# hostname than a raw port.
+expose_via = "nodeport"
+
+# The API's address as your PHONE's browser will reach it — not "localhost"
+# and not a Kubernetes-internal name. Install Tailscale directly inside the
+# VM (its bridged IP means it can join your tailnet on its own, same as any
+# other device) and use its Tailscale IP here, e.g.:
+api_base_url = "http://100.x.y.z:30800"
+
 postgres_password = "change-me"
+
+# Required before this is reachable from outside a fully trusted network.
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+api_key = "change-me"
+
+# Scheduled ingest (scraper/app/ingest.py) — comma-separated soundcloud.com
+# playlist/profile URLs, scraped automatically on ingest_schedule (default:
+# once a day). Empty by default, same "no accounts baked in" rule as the UI
+# catalog — add your own.
+# ingest_urls     = "https://soundcloud.com/<artist>/sets/<playlist>,https://soundcloud.com/<profile>"
+# ingest_schedule = "0 3 * * *"
+
+# --- Docker Desktop alternative (same Windows PC, no separate VM) ---
+# kubeconfig_path = "~/.kube/config"
+# scraper_image   = "apolloaudio-api:local"       # docker build -t apolloaudio-api:local ./scraper
+# frontend_image  = "apolloaudio-frontend:local"  # docker build -t apolloaudio-frontend:local -f frontend/Dockerfile .
+# storage_class   = "hostpath"
+# expose_via      = "loadbalancer"
+# api_base_url    = "http://100.x.y.z:8000"       # this PC's own Tailscale IP

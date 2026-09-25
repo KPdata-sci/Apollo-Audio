@@ -9,6 +9,9 @@ __pycache__/
 *.tfstate.backup
 .terraform/
 .terraform.lock.hcl
+# Holds postgres_password/api_key — the READMEs already claimed this was
+# ignored, but it wasn't actually listed here until now.
+**/terraform.tfvars
 
 # Runtime data — regenerated locally, shouldn't live in git history
 data/

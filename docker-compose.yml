@@ -23,7 +23,11 @@ services:
     depends_on:
       - postgres
 
-  scraper:
+  # Standalone API — no static files mounted, just JSON endpoints. Decoupled
+  # from the front end so it can be deployed/scaled/exposed independently
+  # (e.g. reachable over Tailscale while the UI sits somewhere else, or vice
+  # versa). See docs/HOSTING.md.
+  api:
     build: ./scraper
     ports:
       - "8000:8000"
@@ -40,12 +44,40 @@ services:
       APOLLO_LOG_BACKUP_COUNT: ${APOLLO_LOG_BACKUP_COUNT:-10}
       # Optional, for pages that require being logged in (see README/.env.example). Empty by default.
       APOLLO_SOUNDCLOUD_COOKIES: ${APOLLO_SOUNDCLOUD_COOKIES:-}
+      # Gates POST /scrape and POST /api/discover-playlists behind an X-API-Key
+      # header when set. Empty (default) leaves them open, same as before this
+      # existed — set it before exposing this beyond your own machine.
+      APOLLO_API_KEY: ${APOLLO_API_KEY:-}
+      # Origins allowed to call this API cross-origin, comma-separated, or "*".
+      # Only matters once the frontend container below is on a different
+      # origin than this one.
+      APOLLO_CORS_ORIGINS: ${APOLLO_CORS_ORIGINS:-*}
+      # Comma-separated soundcloud.com URLs for scheduled ingest (see
+      # scraper/app/ingest.py). Not run automatically here — trigger it with
+      # `docker compose run --rm api python -m app.ingest`; in Kubernetes this
+      # runs on a schedule via infra/terraform-k8s/ingest-cronjob.tf.
+      APOLLO_INGEST_URLS: ${APOLLO_INGEST_URLS:-}
     volumes:
       - ./data/lake:/data/lake
       - ./logs:/var/log/apollo
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Static UI, served separately from the API (nginx + scraper/app/static/index.html).
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      # Must be an origin the *browser* can reach, not the Docker service name
+      # — "http://api:8000" only resolves inside the compose network. Default
+      # here assumes you're browsing from the same machine that runs Docker.
+      API_BASE_URL: ${APOLLO_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      - api
 
 volumes:
   postgres-data:
