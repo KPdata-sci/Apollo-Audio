@@ -45,6 +45,25 @@ class TracksPage(BaseModel):
     offset: int
 
 
+class GenreCount(BaseModel):
+    genre: str
+    count: int
+
+
+class SourceSummary(BaseModel):
+    source_url: str
+    track_count: int
+    last_scraped_at: datetime
+
+
+class WarehouseStats(BaseModel):
+    total_tracks: int
+    total_sources: int
+    last_scraped_at: datetime | None = None
+    genres: list[GenreCount]
+    sources: list[SourceSummary]
+
+
 class PlaylistEntry(BaseModel):
     name: str
     url: str

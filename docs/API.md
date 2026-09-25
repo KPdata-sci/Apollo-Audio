@@ -74,9 +74,14 @@ Paginated, searchable read of everything currently in the warehouse.
 **Query params**
 | Param | Default | Notes |
 |---|---|---|
-| `search` | `""` | Case-insensitive substring match against artist or title. |
+| `search` | `""` | Case-insensitive literal substring match against artist or title (`%` and `_` match themselves, not as wildcards). |
+| `genre` | `""` | Case- and surrounding-whitespace-insensitive exact match. Use a `genre` value from `GET /api/stats`. |
+| `source_url` | `""` | Exact match on the playlist/profile URL a track was scraped from. |
+| `sort` | `recent` | `recent` (newest scrape first), `artist`, or `title`. Anything else → `422`. |
 | `limit` | `50` | Clamped to 1-200. |
 | `offset` | `0` | |
+
+Filters combine, and `total` is the filtered count. A NUL character in `search`, `genre` or `source_url` gives a `422`.
 
 **Response `200`**
 ```json
@@ -130,15 +135,35 @@ Browses a profile's `/sets` page and lists its playlists — a read-only step, s
 
 ---
 
-## `GET /api/playlists`
+## `GET /api/stats`
 
-Returns the curated `{genre: [{name, url, note}]}` catalog that powers the front end's genre/playlist dropdowns. **Empty by default** — this project ships generic, with no accounts baked in. Edit `scraper/app/playlists.py` to add your own — no migration or restart needed, it's read fresh on each request.
+Headline numbers and filter facets for the library view. Read-only, no auth.
 
-**Response `200`** (after adding entries — see `scraper/app/playlists.py` for the format)
+**Response `200`**
 ```json
 {
-  "Some Genre": [
-    {"name": "A playlist I like", "url": "https://soundcloud.com/<user>/sets/<slug>", "note": null}
+  "total_tracks": 241,
+  "total_sources": 4,
+  "last_scraped_at": "2026-09-25T17:22:00.445729Z",
+  "genres": [{"genre": "Drum & Bass", "count": 32}],
+  "sources": [{"source_url": "https://soundcloud.com/<user>/sets/<slug>", "track_count": 58, "last_scraped_at": "2026-09-25T17:22:00Z"}]
+}
+```
+- `genres` groups spellings together regardless of case and surrounding whitespace ("Hip-hop/Rap" and "Hip-Hop/Rap " count as one), shows the most common spelling, and leaves out blank genres and `#`-hashtag spam. It's sorted by count and capped at 40. Every `genre` returned works as a `/api/tracks?genre=` filter and returns exactly `count` tracks.
+- `sources` is sorted by most recent scrape, and capped at 100.
+- `last_scraped_at` is `null` when the warehouse is empty.
+
+---
+
+## `GET /api/playlists`
+
+Returns the curated `{genre: [{name, url, note}]}` catalog behind the front end's Discover view. It holds about 19 genres of public playlists, mostly from SoundCloud's own editorial accounts, and each one was checked with the real scraper when added (2026-09-25). `note` flags entries that behave differently, such as profiles instead of sets, or weekly charts that rotate. Edit `scraper/app/playlists.py` to change it. No migration or restart is needed: it's read fresh on each request.
+
+**Response `200`** (abridged)
+```json
+{
+  "Drum & Bass": [
+    {"name": "Fresh Drum & Bass: Bassbin", "url": "https://soundcloud.com/soundcloud-uk/sets/bassbin-fresh-drum-and-bass", "note": null}
   ]
 }
 ```

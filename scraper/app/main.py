@@ -2,6 +2,7 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,7 @@ from .models import (
     ScrapeRequest,
     ScrapeResult,
     TracksPage,
+    WarehouseStats,
 )
 from .pipeline import (
     DisallowedHostError,
@@ -90,7 +92,7 @@ def require_api_key(x_api_key: str = Header(default="")) -> None:
     """Gate for endpoints that trigger real work (scraping/browsing SoundCloud).
     A no-op when APOLLO_API_KEY isn't set, matching this app's behavior before
     this setting existed — set it once this API is reachable outside a trusted
-    network. Read endpoints (/api/tracks, /api/playlists) are never gated."""
+    network. Read endpoints (/api/tracks, /api/stats, /api/playlists) are never gated."""
     if settings.api_key and x_api_key != settings.api_key:
         raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key header")
 
@@ -174,15 +176,71 @@ async def scrape(request: Request, payload: ScrapeRequest) -> ScrapeResult:
     tags=["warehouse"],
     summary="List scraped tracks from the warehouse",
 )
-def list_tracks(search: str = "", limit: int = 50, offset: int = 0) -> TracksPage:
-    """Paginated, searchable read of the `tracks` table. `search` matches
-    (case-insensitively) against artist or title. `limit` is clamped to
-    1-200."""
+def list_tracks(
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    genre: str = "",
+    source_url: str = "",
+    sort: Literal["recent", "artist", "title"] = "recent",
+) -> TracksPage:
+    """Paginated, searchable, filterable read of the `tracks` table.
+
+    - `search`: case-insensitive literal substring match against artist or
+      title (`%` and `_` are matched literally, not as wildcards).
+    - `genre`: case-insensitive match on the trimmed genre; every `genre`
+      value returned by GET /api/stats round-trips here. Empty = no filter.
+    - `source_url`: exact match on the scraped page url. Empty = no filter.
+    - `sort`: `recent` (default, newest scrape first), `artist`, or `title`
+      (both A-Z, case-insensitive). Anything else is a 422.
+    - `limit` is clamped to 1-200; `total` is the count after all filters.
+    - A NUL character in `search`, `genre`, or `source_url` is a 422.
+    """
+    # Postgres rejects NUL in text values outright, so without this a stray
+    # %00 surfaces as an unhandled 500 from psycopg instead of a client error.
+    for name, value in (("search", search), ("genre", genre), ("source_url", source_url)):
+        if "\x00" in value:
+            raise HTTPException(status_code=422, detail=f"`{name}` must not contain NUL characters.")
+
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
 
-    rows, total = warehouse.list_tracks(search=search.strip(), limit=limit, offset=offset)
+    rows, total = warehouse.list_tracks(
+        search=search.strip(),
+        limit=limit,
+        offset=offset,
+        # Emptiness is judged on the stripped value, but a non-empty genre is
+        # passed through untouched — the SQL does the trimming, identically on
+        # both sides of the comparison.
+        genre=genre if genre.strip() else "",
+        source_url=source_url.strip(),
+        sort=sort,
+    )
     return TracksPage(items=rows, total=total, limit=limit, offset=offset)
+
+
+@app.get(
+    "/api/stats",
+    response_model=WarehouseStats,
+    tags=["warehouse"],
+    summary="Warehouse overview: totals, genre facets, and scraped sources",
+)
+def warehouse_stats() -> WarehouseStats:
+    """Read-only summary of the `tracks` table.
+
+    - `total_tracks`, `total_sources` (distinct `source_url`s), and
+      `last_scraped_at` (null when the warehouse is empty).
+    - `genres`: up to 40, grouped case-insensitively on the trimmed genre,
+      null/blank excluded, sorted by count desc then name. The displayed
+      `genre` is the group's most common trimmed spelling (ties broken by
+      byte order, so "Piano" beats "piano"), and always round-trips as the
+      `genre` filter on GET /api/tracks, returning exactly `count` tracks.
+      Hashtag-style values (containing `#`, i.e. uploader tag spam rather
+      than a genre) are omitted from this list but remain filterable.
+    - `sources`: up to 100 scraped pages with their track count and latest
+      scrape time, most recently scraped first.
+    """
+    return WarehouseStats(**warehouse.get_stats(genre_limit=40, source_limit=100))
 
 
 @app.post(
@@ -219,7 +277,7 @@ async def discover_playlists_endpoint(request: Request, payload: DiscoverPlaylis
     summary="List the curated genre -> playlist catalog",
 )
 def list_playlist_catalog() -> dict[str, list[PlaylistEntry]]:
-    """Returns the hand-curated `{genre: [{name, url, note}]}` catalog used to
-    populate the front end's genre/playlist dropdowns. Edit
-    scraper/app/playlists.py to add your own entries — no migration needed."""
+    """Returns the curated, verified `{genre: [{name, url, note}]}` catalog
+    behind the front end's Discover view. Edit scraper/app/playlists.py to
+    change it — no migration needed."""
     return playlists.list_playlists()

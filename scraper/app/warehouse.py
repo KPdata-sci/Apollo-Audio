@@ -27,35 +27,157 @@ VALUES (%(artist)s, %(title)s, %(genre)s, %(url)s, %(downloadable)s, %(source_ur
 """
 
 
-_LIST_SQL = """
+# Normalized genre key shared by the `genre` filter and the /api/stats genre
+# facet, so every facet value round-trips as a filter. btrim with an explicit
+# whitespace set (not bare trim(), which only strips spaces) so a stray
+# tab/newline from scraped data can't split one genre into two keys.
+_GENRE_KEY = "lower(btrim(genre, E' \\t\\r\\n'))"
+_GENRE_PARAM_KEY = "lower(btrim(%(genre)s, E' \\t\\r\\n'))"
+
+
+def escape_like(term: str) -> str:
+    """Escape LIKE metacharacters so `term` matches literally. Pairs with the
+    explicit `ESCAPE '\\'` in _WHERE; backslash must be escaped first."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# `search` is a literal (case-insensitive) substring match: the user's term is
+# run through escape_like() before being wrapped in %...%.
+_WHERE = f"""
+WHERE (%(search)s = ''
+       OR artist ILIKE %(pattern)s ESCAPE '\\'
+       OR title ILIKE %(pattern)s ESCAPE '\\')
+  AND (%(genre)s = '' OR {_GENRE_KEY} = {_GENRE_PARAM_KEY})
+  AND (%(source_url)s = '' OR source_url = %(source_url)s)
+"""
+
+# Whitelisted ORDER BY clauses. User input only ever selects a key here — it is
+# never interpolated into SQL. Every clause ends in `id` so pagination is
+# stable when the leading columns tie. "recent" is the original ordering.
+_ORDER_BY = {
+    "recent": "scraped_at DESC, id DESC",
+    "artist": "lower(artist) ASC, lower(title) ASC, id ASC",
+    "title": "lower(title) ASC, lower(artist) ASC, id ASC",
+}
+SORT_OPTIONS = tuple(_ORDER_BY)
+
+# Pre-built once at import from constants only (no user input involved).
+_LIST_SQL_BY_SORT = {
+    key: f"""
 SELECT id, artist, title, genre, url, downloadable, source_url, scraped_at
 FROM tracks
-WHERE (%(search)s = '' OR artist ILIKE %(pattern)s OR title ILIKE %(pattern)s)
-ORDER BY scraped_at DESC, id DESC
+{_WHERE}
+ORDER BY {order_by}
 LIMIT %(limit)s OFFSET %(offset)s
 """
+    for key, order_by in _ORDER_BY.items()
+}
 
-_COUNT_SQL = """
+_COUNT_SQL = f"""
 SELECT count(*) AS total FROM tracks
-WHERE (%(search)s = '' OR artist ILIKE %(pattern)s OR title ILIKE %(pattern)s)
+{_WHERE}
 """
 
 
-def list_tracks(search: str = "", limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
-    params = {"search": search, "pattern": f"%{search}%", "limit": limit, "offset": offset}
+def list_tracks(
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    genre: str = "",
+    source_url: str = "",
+    sort: str = "recent",
+) -> tuple[list[dict], int]:
+    try:
+        list_sql = _LIST_SQL_BY_SORT[sort]
+    except KeyError:
+        raise ValueError(f"Unsupported sort {sort!r}; expected one of {SORT_OPTIONS}") from None
+
+    params = {
+        "search": search,
+        "pattern": f"%{escape_like(search)}%",
+        "genre": genre,
+        "source_url": source_url,
+        "limit": limit,
+        "offset": offset,
+    }
 
     with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
-            cur.execute(_LIST_SQL, params)
+            cur.execute(list_sql, params)
             rows = cur.fetchall()
             cur.execute(_COUNT_SQL, params)
             total = cur.fetchone()["total"]
 
     logger.debug(
-        "list_tracks(search=%r, limit=%d, offset=%d) -> %d row(s) of %d total",
-        search, limit, offset, len(rows), total,
+        "list_tracks(search=%r, genre=%r, source_url=%r, sort=%s, limit=%d, offset=%d) -> %d row(s) of %d total",
+        search, genre, source_url, sort, limit, offset, len(rows), total,
     )
     return rows, total
+
+
+# Genre facet. Grouped on the same normalized key as the `genre` filter. The
+# display value is the most common trimmed spelling within the group (ties ->
+# first in byte order, which prefers capitalized forms, e.g. "Piano" over
+# "piano"). Hashtag soup ("artist#cover#piano") is uploader tag spam rather
+# than a genre, so it's left out of the facet list — those rows are still
+# counted in total_tracks and still reachable via the `genre` filter.
+_GENRE_FACET_SQL = f"""
+WITH spellings AS (
+    SELECT {_GENRE_KEY} AS key,
+           btrim(genre, E' \\t\\r\\n') AS spelling,
+           count(*) AS n
+    FROM tracks
+    WHERE genre IS NOT NULL
+      AND btrim(genre, E' \\t\\r\\n') <> ''
+      AND strpos(genre, '#') = 0
+    GROUP BY 1, 2
+),
+display AS (
+    SELECT DISTINCT ON (key) key, spelling
+    FROM spellings
+    ORDER BY key, n DESC, spelling COLLATE "C"
+),
+totals AS (
+    SELECT key, sum(n)::int AS count FROM spellings GROUP BY key
+)
+SELECT d.spelling AS genre, t.count
+FROM display d JOIN totals t USING (key)
+ORDER BY t.count DESC, d.key ASC
+LIMIT %(limit)s
+"""
+
+_SOURCES_SQL = """
+SELECT source_url, count(*)::int AS track_count, max(scraped_at) AS last_scraped_at
+FROM tracks
+GROUP BY source_url
+ORDER BY last_scraped_at DESC, source_url ASC
+LIMIT %(limit)s
+"""
+
+_TOTALS_SQL = """
+SELECT count(*)::int AS total_tracks,
+       count(DISTINCT source_url)::int AS total_sources,
+       max(scraped_at) AS last_scraped_at
+FROM tracks
+"""
+
+
+def get_stats(genre_limit: int = 40, source_limit: int = 100) -> dict:
+    """Warehouse overview for GET /api/stats — see main.py for the shape."""
+    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(_TOTALS_SQL)
+            totals = cur.fetchone()
+            cur.execute(_GENRE_FACET_SQL, {"limit": genre_limit})
+            genres = cur.fetchall()
+            cur.execute(_SOURCES_SQL, {"limit": source_limit})
+            sources = cur.fetchall()
+
+    logger.debug(
+        "get_stats -> %d track(s), %d source(s), %d genre facet(s)",
+        totals["total_tracks"], totals["total_sources"], len(genres),
+    )
+    return {**totals, "genres": genres, "sources": sources}
 
 
 def load_tracks(

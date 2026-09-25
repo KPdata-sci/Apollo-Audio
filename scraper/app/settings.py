@@ -55,9 +55,8 @@ class Settings(BaseSettings):
     # Scheduled ingest (scraper/app/ingest.py, run by the k8s CronJob in
     # infra/terraform-k8s/ingest-cronjob.tf, or locally via
     # `docker compose run --rm api python -m app.ingest`). Comma-separated
-    # soundcloud.com playlist/profile URLs. Empty by default — same "no
-    # accounts baked into this repo" rule as playlists.py; set your own via
-    # APOLLO_INGEST_URLS.
+    # soundcloud.com playlist/profile URLs. Empty (off) by default — set your
+    # own via APOLLO_INGEST_URLS, e.g. picked from the playlists.py catalog.
     ingest_urls: str = ""
 
     class Config:
