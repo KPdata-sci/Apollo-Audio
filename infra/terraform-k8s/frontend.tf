@@ -27,6 +27,10 @@ resource "kubernetes_deployment" "frontend" {
             name  = "API_BASE_URL"
             value = var.api_base_url
           }
+          env {
+            name  = "API_PORT"
+            value = var.api_port
+          }
 
           port {
             container_port = 80

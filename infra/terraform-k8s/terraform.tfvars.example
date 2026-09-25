@@ -24,11 +24,13 @@ storage_class = "local-path"
 # hostname than a raw port.
 expose_via = "nodeport"
 
-# The API's address as your PHONE's browser will reach it — not "localhost"
-# and not a Kubernetes-internal name. Install Tailscale directly inside the
-# VM (its bridged IP means it can join your tailnet on its own, same as any
-# other device) and use its Tailscale IP here, e.g.:
-api_base_url = "http://100.x.y.z:30800"
+# api_base_url / api_port: leave both at their defaults (empty / "30800").
+# The frontend derives the API's address at runtime from whatever host/IP
+# the browser used to load the page — so the SAME deployment works whether a
+# viewer reaches it via the VM's LAN IP or its Tailscale IP, without you
+# having to pick one. Install Tailscale directly inside the VM (its bridged
+# IP means it can join your tailnet on its own, same as any other device) —
+# see docs/HOSTING.md.
 
 postgres_password = "change-me"
 
@@ -38,8 +40,8 @@ api_key = "change-me"
 
 # Scheduled ingest (scraper/app/ingest.py) — comma-separated soundcloud.com
 # playlist/profile URLs, scraped automatically on ingest_schedule (default:
-# once a day). Empty by default, same "no accounts baked in" rule as the UI
-# catalog — add your own.
+# once a day). Empty (off) by default — pick some from the
+# scraper/app/playlists.py catalog or add your own.
 # ingest_urls     = "https://soundcloud.com/<artist>/sets/<playlist>,https://soundcloud.com/<profile>"
 # ingest_schedule = "0 3 * * *"
 
@@ -49,4 +51,4 @@ api_key = "change-me"
 # frontend_image  = "apolloaudio-frontend:local"  # docker build -t apolloaudio-frontend:local -f frontend/Dockerfile .
 # storage_class   = "hostpath"
 # expose_via      = "loadbalancer"
-# api_base_url    = "http://100.x.y.z:8000"       # this PC's own Tailscale IP
+# api_port        = "8000"  # Docker Desktop's LoadBalancer maps the Service's own port (8000), not a NodePort

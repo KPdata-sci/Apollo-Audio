@@ -5,15 +5,24 @@
 # root so this can reach scraper/app/static/ — see docker-compose.yml.
 FROM nginx:1.27-alpine
 
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY scraper/app/static/index.html /usr/share/nginx/html/index.html
 COPY frontend/40-apollo-config.sh /docker-entrypoint.d/40-apollo-config.sh
 RUN chmod +x /docker-entrypoint.d/40-apollo-config.sh
 
-# The API's own reachable origin, e.g. "http://100.x.y.z:8000" for a Tailscale
-# address or "https://api.example.com". Empty means "same origin as this
-# page" — only correct if something in front (a reverse proxy) is merging the
-# two under one origin; the plain docker-compose/k8s setups here don't do
-# that, so set this explicitly.
+# Explicit override for the API's origin, e.g. "https://api.example.com".
+# Leave empty (the default) unless you have a reason to hardcode one — with
+# it empty, the page instead derives the API's address at *runtime* from
+# whatever host/IP the browser used to load this page, combined with
+# API_PORT below. That's what makes one deployment work correctly whether a
+# viewer reaches it via a LAN IP, a Tailscale IP, or localhost: those are all
+# different addresses for the same box, and the API is reachable on the same
+# one, just a different port — hardcoding one address here would only ever
+# work for viewers on that one network path.
 ENV API_BASE_URL=""
+# The API's port on that same host — NodePort's api Service in
+# infra/terraform-k8s/api.tf defaults to 30800; docker-compose's api service
+# is 8000 (see docker-compose.yml, which overrides this).
+ENV API_PORT="30800"
 
 EXPOSE 80

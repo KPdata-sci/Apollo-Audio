@@ -72,10 +72,13 @@ services:
     ports:
       - "8080:80"
     environment:
-      # Must be an origin the *browser* can reach, not the Docker service name
-      # — "http://api:8000" only resolves inside the compose network. Default
-      # here assumes you're browsing from the same machine that runs Docker.
-      API_BASE_URL: ${APOLLO_API_BASE_URL:-http://localhost:8000}
+      # Empty by default — the page derives the API's address at runtime from
+      # whatever host/IP loaded it, combined with API_PORT below (see
+      # frontend/Dockerfile). Set APOLLO_API_BASE_URL to override with a full
+      # origin instead (e.g. reaching the API through a reverse proxy where
+      # the port-derivation trick doesn't apply).
+      API_BASE_URL: ${APOLLO_API_BASE_URL:-}
+      API_PORT: ${APOLLO_API_PORT:-8000}
     depends_on:
       - api
 

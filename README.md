@@ -64,28 +64,35 @@ This starts:
 
 ### Using the front end
 
-Open [localhost:8080](http://localhost:8080). Three ways to pick what to scrape:
-- **Catalog dropdowns** — choose a genre, then a playlist from that genre.
-  Empty by default (this project ships generic, with no accounts baked in) —
-  add your own in [scraper/app/playlists.py](scraper/app/playlists.py), no
-  migration needed. Selecting one fills in the URL box; you still click
-  Scrape yourself.
-- **Browse a profile's playlists** — paste any profile URL
-  (`soundcloud.com/<user>`) and click Browse to list everything on that
-  account's `/sets` page, with a Load button per result to send it to the
-  scrape box. Read-only — browsing never scrapes anything by itself.
-- **Paste a URL directly** — any playlist/set or profile page.
+Open [localhost:8080](http://localhost:8080). It's built for phones first, and
+has three views. On desktop you switch between them with the header switcher;
+on phones, with the bottom tab bar.
+- **Discover:** genre tiles and playlist cards from the curated catalog in
+  [scraper/app/playlists.py](scraper/app/playlists.py). That's about 19
+  genres of public playlists, each checked with the real scraper when added.
+  Tap Scrape on a card, or "Scrape all" for a whole genre.
+- **Add:** paste any playlist, set or profile URL. Or browse a profile's
+  `/sets` page to list its playlists first. Browsing is read-only and never
+  scrapes on its own.
+- **Library:** everything in the warehouse. It has headline stats, a
+  debounced search (press `/` to focus), genre chips with counts, a source
+  filter, sorting and paging. It reads `GET /api/stats` and
+  `GET /api/tracks?search=&genre=&source_url=&sort=`.
 
-Scraping can take up to a minute (it's driving a real headless browser and
-scrolling the page). The tracks table below reads live from the warehouse via
-`GET /api/tracks?search=&limit=&offset=`, with a debounced search box (matches
-artist or title) and Prev/Next pagination.
+Every scrape goes through one queue, one at a time. The strip under the
+header shows what's running, the elapsed time and how many are queued, with
+Cancel. Each scrape can take up to a minute: it drives a real headless browser
+and scrolls the page. If you hit the rate limit (429), the queue waits,
+shows a countdown and retries. If the API key is missing (401), it stops and
+offers to set one.
 
-**Playback**: each row has a Play button that streams the track via
-SoundCloud's own official embeddable player — audio comes straight from
-SoundCloud's infrastructure, nothing is downloaded or proxied by this app.
-Only one track plays at a time: starting another stops whatever was playing,
-there's no batch/background playback.
+**Playback**: the Play button opens a docked player bar using SoundCloud's own
+official embeddable player. Audio comes straight from SoundCloud's
+infrastructure; nothing is downloaded or proxied by this app. The play/pause
+state comes from the player's own events. So on iOS, which blocks autoplay
+in iframes, the bar asks you to press ▶ instead of pretending to play. Only
+one track plays at a time, and playback keeps going while you page or filter.
+There's no auto-advance and no batch or background playback.
 
 **Download**: a Download link only appears when SoundCloud's own data says the
 uploader enabled downloads for that specific track (`downloadable: true`). It
@@ -96,9 +103,10 @@ artist didn't make downloadable.
 It's a single static page ([scraper/app/static/index.html](scraper/app/static/index.html))
 with no build step, served by the `frontend` container (nginx) rather than
 the API. Editing it needs a `docker compose up --build frontend` to pick up —
-the container mounts nothing, so there's no live-reload; for quick iteration,
-open the file directly in a browser and point `window.APOLLO_API_BASE` (see
-`frontend/40-apollo-config.sh`) at `http://localhost:8000`.
+the container mounts nothing, so there's no live-reload. The page calls the
+API on its own hostname, at `APOLLO_API_PORT` (see
+`frontend/40-apollo-config.sh`). So the same deployment works whether you
+reach it via localhost, a LAN IP or a Tailscale IP.
 
 If `APOLLO_API_KEY` is set, the front end's 🔑 **API key** button stores the
 key in your browser's `localStorage` and attaches it to `/scrape` and
@@ -132,9 +140,8 @@ untested — no SoundCloud account was available while building it.
 Beyond the on-demand `POST /scrape`, `scraper/app/ingest.py` re-runs the same
 fetch → parse → lake → warehouse pipeline against a fixed list of URLs —
 useful for keeping a small set of playlists you care about up to date without
-opening the UI. Empty/off by default (same "no accounts baked into this repo"
-rule as the catalog); set `APOLLO_INGEST_URLS` (comma-separated soundcloud.com
-URLs) to use it:
+opening the UI. It's off by default. Set `APOLLO_INGEST_URLS`
+(comma-separated soundcloud.com URLs, e.g. picked from the catalog) to use it:
 
 ```bash
 docker compose run --rm api python -m app.ingest
