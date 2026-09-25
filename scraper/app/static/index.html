@@ -2,203 +2,1290 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Project Apollo — SoundCloud Scraper</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" id="theme-color-meta" content="#0a0b0e">
+<title>Apollo — SoundCloud library</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ff8a3d'/%3E%3Cstop offset='1' stop-color='%23f0386b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M8 17.5v-3M12 21v-10M16 24V8M20 21v-10M24 17.5v-3' stroke='white' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<script>
+  // Apply a saved theme override before first paint (no light/dark flash).
+  try {
+    var t = localStorage.getItem("apollo_theme");
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  } catch (e) { /* storage unavailable — follow the system theme */ }
+</script>
 <style>
+  /* ==========================================================================
+     Design tokens
+     ========================================================================== */
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --border: #2a2e38;
-    --text: #e6e8eb;
-    --muted: #9aa1ac;
-    --accent: #ff5500; /* soundcloud orange */
-    --accent-hover: #ff7733;
-    --danger: #e5484d;
-    --ok: #3ecf8e;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+    /* spacing scale (4px base) */
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px;
+    --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px; --s-16: 64px;
+
+    /* type scale */
+    --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-base: 15px; --fs-md: 16px;
+    --fs-lg: 18px; --fs-xl: 22px; --fs-2xl: 28px; --fs-3xl: 34px;
+
+    /* radii */
+    --r-xs: 6px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 22px; --r-pill: 999px;
+
+    /* motion */
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
+    --dur-1: 120ms; --dur-2: 200ms; --dur-3: 320ms;
+
+    /* layout */
+    --appbar-h: 60px;
+    --content-w: 1120px;
+    --tabbar-space: 0px;
+    --dock-space: 0px;
+
+    /* --- light palette --- */
+    --bg: #f5f4f1;
+    --glow-1: rgba(255, 106, 43, .13);
+    --glow-2: rgba(124, 92, 255, .08);
+    --surface: #ffffff;
+    --surface-2: #f7f6f3;
+    --surface-3: #eeece8;
+    --surface-inset: #f3f2ef;
+    --border: rgba(24, 22, 20, .09);
+    --border-strong: rgba(24, 22, 20, .17);
+    --text: #16171b;
+    --text-2: #4f545e;
+    --text-3: #62666f; /* 4.9:1 on --surface-3 */
+    --accent: #cf4410;
+    --accent-hover: #b93a0b;
+    --accent-ink: #ffffff;
+    --accent-text: #c2410c;
+    --accent-soft: rgba(230, 80, 20, .09);
+    --accent-soft-2: rgba(230, 80, 20, .17);
+    --ok: #15803d; --ok-soft: rgba(21, 128, 61, .10);
+    --warn: #a15c07; --warn-soft: rgba(217, 119, 6, .13);
+    --danger: #c02d2d; --danger-soft: rgba(197, 48, 48, .09);
+    --shadow-1: 0 1px 2px rgba(20, 16, 12, .06), 0 1px 1px rgba(20, 16, 12, .03);
+    --shadow-2: 0 6px 20px -6px rgba(20, 16, 12, .16), 0 2px 4px rgba(20, 16, 12, .05);
+    --shadow-3: 0 24px 60px -16px rgba(20, 16, 12, .32), 0 6px 16px rgba(20, 16, 12, .08);
+    --skeleton: #ebe9e4;
+    --skeleton-hi: #f7f6f3;
+    --chrome-bg: rgba(245, 244, 241, .8);
+    --cover-l1: 62%; --cover-l2: 46%;
   }
-  * { box-sizing: border-box; }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0a0b0e;
+      --glow-1: rgba(255, 95, 31, .13);
+      --glow-2: rgba(120, 90, 255, .11);
+      --surface: #131519;
+      --surface-2: #181b20;
+      --surface-3: #21252d;
+      --surface-inset: #0e1013;
+      --border: rgba(255, 255, 255, .07);
+      --border-strong: rgba(255, 255, 255, .14);
+      --text: #eceef2;
+      --text-2: #a4aab6;
+      --text-3: #8b919e; /* 4.9:1 on --surface-3 */
+      --accent: #ff5f1f;
+      --accent-hover: #ff7a3d;
+      --accent-ink: #1a0800;
+      --accent-text: #ff8a4c;
+      --accent-soft: rgba(255, 95, 31, .12);
+      --accent-soft-2: rgba(255, 95, 31, .22);
+      --ok: #4ade80; --ok-soft: rgba(74, 222, 128, .12);
+      --warn: #fbbf24; --warn-soft: rgba(251, 191, 36, .12);
+      --danger: #f87171; --danger-soft: rgba(248, 113, 113, .12);
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+      --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, .6), 0 2px 4px rgba(0, 0, 0, .3);
+      --shadow-3: 0 28px 70px -16px rgba(0, 0, 0, .75), 0 6px 16px rgba(0, 0, 0, .4);
+      --skeleton: #1b1e24;
+      --skeleton-hi: #252932;
+      --chrome-bg: rgba(10, 11, 14, .74);
+      --cover-l1: 55%; --cover-l2: 38%;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0b0e;
+    --glow-1: rgba(255, 95, 31, .13);
+    --glow-2: rgba(120, 90, 255, .11);
+    --surface: #131519;
+    --surface-2: #181b20;
+    --surface-3: #21252d;
+    --surface-inset: #0e1013;
+    --border: rgba(255, 255, 255, .07);
+    --border-strong: rgba(255, 255, 255, .14);
+    --text: #eceef2;
+    --text-2: #a4aab6;
+    --text-3: #8b919e;
+    --accent: #ff5f1f;
+    --accent-hover: #ff7a3d;
+    --accent-ink: #1a0800;
+    --accent-text: #ff8a4c;
+    --accent-soft: rgba(255, 95, 31, .12);
+    --accent-soft-2: rgba(255, 95, 31, .22);
+    --ok: #4ade80; --ok-soft: rgba(74, 222, 128, .12);
+    --warn: #fbbf24; --warn-soft: rgba(251, 191, 36, .12);
+    --danger: #f87171; --danger-soft: rgba(248, 113, 113, .12);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, .6), 0 2px 4px rgba(0, 0, 0, .3);
+    --shadow-3: 0 28px 70px -16px rgba(0, 0, 0, .75), 0 6px 16px rgba(0, 0, 0, .4);
+    --skeleton: #1b1e24;
+    --skeleton-hi: #252932;
+    --chrome-bg: rgba(10, 11, 14, .74);
+    --cover-l1: 55%; --cover-l2: 38%;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+
+  /* ==========================================================================
+     Base
+     ========================================================================== */
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--appbar-h) + var(--s-4)); scrollbar-gutter: stable; }
   body {
     margin: 0;
+    min-height: 100vh;
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
+    font-size: var(--fs-base);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
   }
-  header {
-    padding: 24px 32px 12px;
-    border-bottom: 1px solid var(--border);
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(1100px 560px at 8% -12%, var(--glow-1), transparent 62%),
+      radial-gradient(900px 520px at 105% -4%, var(--glow-2), transparent 58%);
   }
-  header h1 { margin: 0 0 4px; font-size: 20px; }
-  header p { margin: 0; color: var(--muted); font-size: 13px; }
-  main {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 24px 32px 64px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
+  ::selection { background: var(--accent-soft-2); }
+  h1, h2, h3 { margin: 0; line-height: 1.2; letter-spacing: -0.015em; }
+  p { margin: 0; text-wrap: pretty; }
+  h1, h2, h3 { text-wrap: balance; }
+  a { color: var(--accent-text); text-decoration: none; }
+  code { font-family: var(--font-mono); font-size: .9em; background: var(--surface-3); padding: 1px 5px; border-radius: var(--r-xs); }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-xs); }
+  .visually-hidden {
+    position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
+  .muted { color: var(--text-2); }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .i {
+    width: 18px; height: 18px; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
   }
-  .panel h2 { margin: 0 0 14px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  .scrape-form { display: flex; gap: 8px; flex-wrap: wrap; }
-  input[type="url"], input[type="search"] {
-    flex: 1;
-    min-width: 200px;
-    background: #0d0f13;
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 10px 12px;
-    border-radius: 6px;
+  .i-sm { width: 15px; height: 15px; }
+  .i-lg { width: 26px; height: 26px; }
+
+  .skip-link {
+    position: fixed; left: var(--s-3); top: var(--s-3); z-index: 100;
+    transform: translateY(-160%);
+    background: var(--accent); color: var(--accent-ink);
+    padding: var(--s-2) var(--s-4); border-radius: var(--r-sm); font-weight: 600;
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+  .skip-link:focus { transform: none; }
+
+  /* ==========================================================================
+     Buttons, inputs, pills
+     ========================================================================== */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+    height: 40px; padding: 0 var(--s-4);
+    border-radius: var(--r-md); border: 1px solid transparent;
+    font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap;
+    cursor: pointer; user-select: none; text-decoration: none;
+    transition: background-color var(--dur-1) ease, border-color var(--dur-1) ease,
+                color var(--dur-1) ease, transform var(--dur-1) ease, box-shadow var(--dur-2) ease;
+  }
+  .btn:active:not(:disabled) { transform: scale(.97); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--accent); color: var(--accent-ink);
+    box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 6px 18px -8px var(--accent);
+  }
+  .btn-secondary { background: var(--surface-3); color: var(--text); border-color: var(--border); }
+  .btn-ghost { background: transparent; color: var(--text-2); }
+  .btn-danger { color: var(--danger); }
+  .btn-sm { height: 34px; padding: 0 var(--s-3); font-size: 13px; border-radius: var(--r-sm); }
+  .btn-icon { width: 40px; padding: 0; }
+  .btn-icon.btn-sm { width: 34px; }
+  .link-btn {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--accent-text); font-weight: 600; font-size: inherit;
+  }
+
+  .input, .select {
+    width: 100%; height: 46px;
+    background: var(--surface-inset); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: var(--r-md);
+    padding: 0 var(--s-4);
     /* 16px, not 14px: iOS Safari auto-zooms the page on focus for any input
        under 16px, which is jarring on a phone (this app is used over
        Tailscale from mobile, see docs/HOSTING.md). */
     font-size: 16px;
+    transition: border-color var(--dur-1) ease, box-shadow var(--dur-2) ease, background-color var(--dur-1) ease;
   }
-  input:focus { outline: none; border-color: var(--accent); }
-  button {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 10px 18px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
+  .input::placeholder { color: var(--text-3); }
+  .input:focus, .select:focus, .input:focus-visible, .select:focus-visible {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 38%, transparent);
   }
-  button:hover:not(:disabled) { background: var(--accent-hover); }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .status { margin-top: 12px; font-size: 13px; min-height: 18px; }
-  .status.error { color: var(--danger); }
-  .status.ok { color: var(--ok); }
-  .browse-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
-  /* Contained horizontal scroll instead of the whole page scrolling
-     sideways on a narrow (phone) viewport. */
-  #table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
-  td.genre { color: var(--muted); white-space: nowrap; }
-  td.scraped_at { color: var(--muted); white-space: nowrap; font-size: 12px; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .pager { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; color: var(--muted); }
-  .pager button { padding: 6px 12px; font-weight: 500; }
-  .empty { color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
-  .catalog-controls { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-  select {
-    background: #0d0f13;
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 10px 12px;
-    border-radius: 6px;
-    font-size: 16px; /* see input[type="url"] comment above */
-    flex: 1;
-    min-width: 160px;
+  .input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+  .select {
+    appearance: none; -webkit-appearance: none;
+    padding-right: 38px; cursor: pointer; text-overflow: ellipsis;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8f99' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; background-size: 16px;
   }
-  select:focus { outline: none; border-color: var(--accent); }
-  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0; }
-  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-  .icon-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 4px 9px;
-    border-radius: 5px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-  }
-  .icon-btn:hover:not(:disabled) { background: #0d0f13; border-color: var(--accent); color: var(--accent); }
-  .icon-btn.playing { background: var(--accent); border-color: var(--accent); color: white; }
-  .icon-btn.key-set { border-color: var(--ok); color: var(--ok); }
-  td.actions { white-space: nowrap; }
-  td.actions .icon-btn + .icon-btn { margin-left: 6px; }
+  input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+  .field-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); margin-bottom: var(--s-2); letter-spacing: .01em; }
 
-  /* Below this width: stack the scrape controls, and give tap targets
-     (Play/Download/pager buttons) more room — the desktop sizing above is
-     too tight to tap reliably on a phone. */
-  @media (max-width: 600px) {
-    main { padding: 16px 16px 48px; }
-    .catalog-controls, .scrape-form { flex-direction: column; align-items: stretch; }
-    .icon-btn { padding: 8px 12px; font-size: 13px; }
-    td.actions .icon-btn + .icon-btn { margin-left: 10px; }
-    .pager button { padding: 10px 16px; }
+  .pill {
+    display: inline-flex; align-items: center; max-width: 100%;
+    height: 24px; padding: 0 var(--s-2);
+    border-radius: var(--r-pill);
+    background: var(--surface-3); color: var(--text-2);
+    font-size: var(--fs-xs); font-weight: 500; line-height: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border: 1px solid transparent;
   }
-  tr.player-row td { padding: 0; border-bottom: 1px solid var(--border); }
-  tr.player-row iframe { display: block; width: 100%; height: 120px; border: 0; }
+  button.pill { cursor: pointer; transition: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease; }
+  .pill-empty { background: transparent; border: 1px dashed var(--border-strong); color: var(--text-3); }
+  .pill span { overflow: hidden; text-overflow: ellipsis; }
+
   .spinner {
-    display: inline-block; width: 12px; height: 12px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
-    animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: -1px;
+    display: inline-block; flex: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent; opacity: .85;
+    animation: spin .7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .browse-list { list-style: none; margin: 12px 0 0; padding: 0; max-height: 260px; overflow-y: auto; }
-  .browse-list li {
-    display: flex; justify-content: space-between; align-items: center; gap: 10px;
-    padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px;
+
+  .skeleton {
+    display: block; border-radius: var(--r-xs);
+    background: linear-gradient(90deg, var(--skeleton) 0%, var(--skeleton-hi) 40%, var(--skeleton) 80%);
+    background-size: 300% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
   }
-  .browse-list li:hover { background: #0d0f13; }
-  .browse-list button { padding: 5px 12px; font-size: 12px; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-1);
+  }
+
+  /* ==========================================================================
+     App bar + navigation
+     ========================================================================== */
+  .appbar { position: sticky; top: 0; z-index: 40; }
+  /* The blur lives on a pseudo-element, not on .appbar itself: a
+     backdrop-filter on the header would become the containing block for the
+     position:fixed mobile tab bar nested inside it. */
+  .appbar::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background: var(--chrome-bg);
+    -webkit-backdrop-filter: saturate(160%) blur(18px);
+    backdrop-filter: saturate(160%) blur(18px);
+    border-bottom: 1px solid var(--border);
+  }
+  .appbar-inner {
+    max-width: var(--content-w); margin: 0 auto;
+    height: var(--appbar-h);
+    padding: 0 var(--s-6);
+    display: flex; align-items: center; gap: var(--s-4);
+  }
+  .brand { display: flex; align-items: center; gap: var(--s-3); color: var(--text); text-decoration: none; min-width: 0; }
+  .brand-mark { width: 34px; height: 34px; flex: none; filter: drop-shadow(0 4px 10px rgba(255, 90, 31, .35)); }
+  .brand-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+  .brand-name { font-weight: 750; font-size: 17px; letter-spacing: -0.02em; }
+  .brand-sub { font-size: var(--fs-2xs); color: var(--text-3); letter-spacing: .02em; white-space: nowrap; }
+
+  .nav {
+    margin: 0 auto;
+    display: flex; gap: 2px; padding: 4px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+  }
+  .nav a {
+    position: relative;
+    display: flex; align-items: center; gap: var(--s-2);
+    height: 34px; padding: 0 var(--s-4);
+    border-radius: var(--r-pill);
+    color: var(--text-2); font-size: 14px; font-weight: 600; text-decoration: none;
+    transition: color var(--dur-1) ease, background-color var(--dur-2) ease, box-shadow var(--dur-2) ease;
+  }
+  .nav a[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1), 0 0 0 1px var(--border); }
+  .nav a[aria-current="page"] .i { color: var(--accent-text); }
+  .nav .nav-badge {
+    position: absolute; top: 3px; right: 6px;
+    min-width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 0 2px var(--surface-3);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .appbar-actions { display: flex; align-items: center; gap: var(--s-2); flex: none; margin-left: auto; }
+  .key-btn { position: relative; }
+  .key-btn .key-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-3); box-shadow: 0 0 0 3px var(--surface-3);
+    transition: background-color var(--dur-2) ease;
+  }
+  .key-btn.key-set { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: var(--ok-soft); }
+  .key-btn.key-set .key-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+
+  /* Activity strip: live scrape queue status, pinned under the app bar so it
+     follows the user across views. */
+  .activity { position: relative; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--accent-soft) 70%, var(--chrome-bg)); overflow: hidden; }
+  .activity-inner {
+    max-width: var(--content-w); margin: 0 auto;
+    padding: var(--s-2) var(--s-6);
+    display: flex; align-items: center; gap: var(--s-3);
+    font-size: var(--fs-sm); min-height: 44px;
+  }
+  .activity-inner .spinner { color: var(--accent-text); }
+  .activity-inner .i { color: var(--warn); }
+  .activity-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .activity-text strong { font-weight: 650; }
+  .activity-meta { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .activity-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
+  .activity-bar::after {
+    content: ""; position: absolute; top: 0; bottom: 0; width: 35%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: indeterminate 1.4s var(--ease-out) infinite;
+  }
+  .activity.is-waiting .activity-bar::after { background: linear-gradient(90deg, transparent, var(--warn), transparent); animation-duration: 2.4s; }
+  @keyframes indeterminate { from { left: -35%; } to { left: 100%; } }
+
+  /* ==========================================================================
+     Layout
+     ========================================================================== */
+  main {
+    max-width: var(--content-w); margin: 0 auto;
+    padding: var(--s-8) var(--s-6) calc(var(--s-16) + var(--tabbar-space) + var(--dock-space));
+    outline: none;
+  }
+  .view { animation: view-in var(--dur-3) var(--ease-out); }
+  @keyframes view-in { from { opacity: 0; transform: translateY(6px); } }
+  .view-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s-4); margin-bottom: var(--s-6); flex-wrap: wrap; }
+  .view-head h1 { font-size: var(--fs-3xl); font-weight: 780; letter-spacing: -0.03em; outline: none; }
+  .view-head .lede { color: var(--text-2); margin-top: var(--s-2); font-size: var(--fs-md); max-width: 68ch; }
+  .section-title { font-size: var(--fs-lg); font-weight: 700; }
+
+  /* ==========================================================================
+     Library: stats
+     ========================================================================== */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); margin-bottom: var(--s-4); }
+  .stat { padding: var(--s-4) var(--s-5); position: relative; overflow: hidden; }
+  .stat-label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-2xs); font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
+  .stat-label .i { width: 14px; height: 14px; color: var(--accent-text); }
+  .stat-value { font-size: var(--fs-2xl); font-weight: 760; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: var(--s-1); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat-sub { font-size: var(--fs-xs); color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat:first-child { background: linear-gradient(140deg, var(--accent-soft-2), transparent 70%), var(--surface); }
+  .lbl-short { display: none; }
+  .genre-bar { display: flex; height: 6px; border-radius: var(--r-pill); overflow: hidden; margin-top: var(--s-3); background: var(--surface-3); gap: 2px; }
+  .genre-bar span { display: block; height: 100%; background: hsl(var(--h) 70% var(--cover-l1)); }
+
+  /* ==========================================================================
+     Library: toolbar + filters
+     ========================================================================== */
+  .toolbar { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); margin-bottom: var(--s-4); }
+  .search-row { display: flex; gap: var(--s-2); align-items: center; }
+  .search { position: relative; flex: 1; min-width: 0; }
+  .search > .i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+  .search .input { padding-left: 42px; padding-right: 76px; }
+  .search-aside { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 4px; }
+  .kbd {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+    border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px;
+    padding: 1px 6px; background: var(--surface);
+  }
+  .filters-toggle .badge {
+    min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-pill);
+    background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .filters { display: flex; flex-direction: column; gap: var(--s-3); }
+  .filtering { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-weight: 600; }
+  .filtering .spinner { width: 12px; height: 12px; color: var(--accent-text); }
+  .filters-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
+  .filter-selects { display: flex; gap: var(--s-2); }
+  .filter-selects .field { flex: 1; min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 var(--s-3);
+    border-radius: var(--r-pill);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    font-size: var(--fs-sm); font-weight: 550; color: var(--text-2);
+    cursor: pointer; max-width: 100%;
+    transition: background-color var(--dur-1) ease, border-color var(--dur-1) ease, color var(--dur-1) ease, transform var(--dur-1) ease;
+  }
+  .chip:active { transform: scale(.96); }
+  .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-count { font-size: var(--fs-2xs); color: var(--text-3); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .chip[aria-pressed="true"] { background: var(--accent-soft-2); border-color: var(--accent); color: var(--accent-text); }
+  .chip[aria-pressed="true"] .chip-count { color: inherit; opacity: .8; }
+  .chip-more { border-style: dashed; }
+
+  .active-filters { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); padding-top: var(--s-3); border-top: 1px solid var(--border); }
+  .active-filters .count { font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; margin-right: var(--s-1); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px; max-width: 260px;
+    height: 28px; padding: 0 4px 0 10px; border-radius: var(--r-pill);
+    background: var(--surface-3); color: var(--text); font-size: var(--fs-xs); font-weight: 550;
+    border: 0; cursor: pointer;
+  }
+  .tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag .i { width: 14px; height: 14px; padding: 2px; box-sizing: content-box; border-radius: 50%; color: var(--text-3); }
+
+  /* ==========================================================================
+     Library: track list
+     ========================================================================== */
+  .list-card { overflow: hidden; position: relative; }
+  .list-card[aria-busy="true"] .track-list { opacity: .5; transition: opacity var(--dur-2) ease .1s; }
+  .list-progress { position: absolute; left: 0; right: 0; top: 0; height: 2px; overflow: hidden; z-index: 2; }
+  .list-progress::after { content: ""; position: absolute; top: 0; bottom: 0; width: 35%; background: var(--accent); animation: indeterminate 1s var(--ease-out) infinite; }
+  .list-head {
+    display: grid; grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) 168px;
+    gap: var(--s-4); padding: var(--s-3) var(--s-4);
+    font-size: var(--fs-2xs); font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .list-head > :last-child { text-align: right; }
+  .track-list { list-style: none; margin: 0; padding: 0; }
+  .track {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) 168px;
+    grid-template-areas: "cover main genre source actions";
+    align-items: center; gap: var(--s-4);
+    padding: 10px var(--s-4);
+    border-bottom: 1px solid var(--border);
+    transition: background-color var(--dur-1) ease;
+    animation: row-in var(--dur-3) var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 18ms);
+  }
+  @keyframes row-in { from { opacity: 0; transform: translateY(4px); } }
+  .track:last-child { border-bottom: 0; }
+  .track.is-current { background: var(--accent-soft); }
+  .track.is-current::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+  .cover {
+    grid-area: cover;
+    position: relative; width: 44px; height: 44px; border-radius: 10px;
+    display: grid; place-items: center; cursor: pointer; overflow: hidden;
+    background: linear-gradient(135deg, hsl(var(--h) 78% var(--cover-l1)), hsl(calc(var(--h) + 50) 72% var(--cover-l2)));
+    color: rgba(255,255,255,.92); font-size: 14px; font-weight: 750; letter-spacing: .02em;
+    text-shadow: 0 1px 2px rgba(0,0,0,.25);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
+  }
+  .cover-hover { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.4); opacity: 0; transition: opacity var(--dur-1) ease; }
+  .cover-hover .i { fill: #fff; stroke: none; width: 18px; height: 18px; }
+  .eq { position: absolute; inset: 0; display: none; align-items: flex-end; justify-content: center; gap: 3px; padding: 12px 11px; background: linear-gradient(135deg, var(--accent), #f0386b); }
+  .eq span { width: 4px; height: 100%; border-radius: 2px; background: #fff; transform-origin: bottom; transform: scaleY(.5); }
+  .eq span:nth-child(2) { transform: scaleY(.85); }
+  .eq span:nth-child(3) { transform: scaleY(.35); }
+  /* Bars only move while the widget has actually reported "play". */
+  .track.is-playing .eq span, .dock.is-playing .eq span { animation: eq 1s ease-in-out infinite; }
+  .track.is-playing .eq span:nth-child(2), .dock.is-playing .eq span:nth-child(2) { animation-delay: -.35s; animation-duration: .8s; }
+  .track.is-playing .eq span:nth-child(3), .dock.is-playing .eq span:nth-child(3) { animation-delay: -.6s; animation-duration: 1.15s; }
+  @keyframes eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+  .track.is-current .eq { display: flex; }
+  .track.is-current .cover-hover { display: none; }
+  .t-main { grid-area: main; min-width: 0; }
+  .t-title { display: block; font-weight: 620; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-base); }
+  .t-artist { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-meta { display: contents; }
+  .t-genre { grid-area: genre; min-width: 0; }
+  .t-source { grid-area: source; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); line-height: 1.35; }
+  .t-source .src-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-source time { font-size: var(--fs-xs); color: var(--text-3); }
+  .t-actions { grid-area: actions; display: flex; justify-content: flex-end; align-items: center; gap: var(--s-2); }
+  .t-play { min-width: 82px; }
+  .t-play .i { fill: currentColor; stroke: none; width: 14px; height: 14px; }
+  .t-play.is-current { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  mark { background: color-mix(in srgb, var(--accent) 26%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+
+  .track.skeleton-row { animation: none; }
+  .sk-cover { width: 44px; height: 44px; border-radius: 10px; }
+
+  /* ==========================================================================
+     Pager
+     ========================================================================== */
+  .pager { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin-top: var(--s-4); flex-wrap: wrap; }
+  .pager-info { font-size: var(--fs-sm); color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .pager-info strong { color: var(--text); font-weight: 650; }
+  .pager-controls { display: flex; align-items: center; gap: var(--s-2); }
+  .pager-page { font-size: var(--fs-sm); color: var(--text-2); min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+
+  /* ==========================================================================
+     Empty / error states & callouts
+     ========================================================================== */
+  .state { text-align: center; padding: var(--s-12) var(--s-6); display: flex; flex-direction: column; align-items: center; gap: var(--s-3); }
+  .state-icon {
+    width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; margin-bottom: var(--s-2);
+    background: linear-gradient(140deg, var(--accent-soft-2), var(--accent-soft));
+    color: var(--accent-text);
+    box-shadow: inset 0 0 0 1px var(--accent-soft-2);
+  }
+  .state-icon.is-error { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 25%, transparent); }
+  .state h3 { font-size: var(--fs-lg); font-weight: 700; }
+  .state p { color: var(--text-2); max-width: 46ch; }
+  .state-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; margin-top: var(--s-2); }
+  .state code { font-size: 12px; }
+
+  .callout {
+    display: flex; gap: var(--s-3); align-items: flex-start;
+    padding: var(--s-3) var(--s-4); border-radius: var(--r-md);
+    font-size: var(--fs-sm); line-height: 1.5;
+    border: 1px solid transparent;
+    animation: pop-in var(--dur-3) var(--ease-out);
+  }
+  @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(.99); } }
+  .callout > .i { margin-top: 1px; }
+  .callout-body { flex: 1; min-width: 0; }
+  .callout-title { font-weight: 650; color: var(--text); }
+  .callout-msg { color: var(--text-2); overflow-wrap: anywhere; }
+  .callout-actions { display: flex; gap: var(--s-3); margin-top: var(--s-2); flex-wrap: wrap; align-items: center; }
+  .callout details { margin-top: var(--s-2); color: var(--text-3); font-size: var(--fs-xs); }
+  .callout summary { cursor: pointer; }
+  .callout details code { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-3); padding: var(--s-2); }
+  .callout-error { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 22%, transparent); }
+  .callout-error > .i { color: var(--danger); }
+  .callout-success { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 22%, transparent); }
+  .callout-success > .i { color: var(--ok); }
+  .callout-info { background: var(--surface-2); border-color: var(--border); }
+  .callout-info > .i { color: var(--accent-text); }
+  .callout-warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 25%, transparent); }
+  .callout-warn > .i { color: var(--warn); }
+
+  /* ==========================================================================
+     Discover (catalog)
+     ========================================================================== */
+  .genre-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); gap: var(--s-2); margin-bottom: var(--s-6); }
+  .genre-tile {
+    position: relative; overflow: hidden; text-align: left;
+    display: flex; flex-direction: column; justify-content: center; gap: 1px;
+    min-height: 58px; padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
+    border-radius: var(--r-md); border: 1px solid var(--border);
+    background: var(--surface); cursor: pointer; box-shadow: var(--shadow-1);
+    transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) ease, border-color var(--dur-1) ease;
+  }
+  .genre-tile::before {
+    content: ""; position: absolute; width: 84px; height: 84px; right: -26px; top: -30px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 60%, hsl(var(--h) 85% 60% / .34), hsl(calc(var(--h) + 50) 80% 55% / 0) 70%);
+    transition: transform var(--dur-3) var(--ease-out);
+  }
+  .genre-tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-2); }
+  .genre-tile-name { position: relative; font-weight: 700; font-size: var(--fs-base); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .genre-tile-count { position: relative; font-size: var(--fs-xs); color: var(--text-2); display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .genre-tile-count .i { width: 13px; height: 13px; color: var(--ok); }
+  .genre-tile.is-complete .genre-tile-count { color: var(--ok); }
+  .genre-tile-meta { display: inline-flex; align-items: center; gap: 4px; }
+  .genre-tile-busy { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+
+  .genre-panel { animation: view-in var(--dur-3) var(--ease-out); }
+  .panel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s-4); margin-bottom: var(--s-4); flex-wrap: wrap; }
+  .panel-head h2 { font-size: var(--fs-xl); font-weight: 750; outline: none; }
+  .panel-head p { color: var(--text-2); font-size: var(--fs-sm); margin-top: 2px; }
+
+  .group-bar { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; justify-content: flex-end; }
+  .group-progress { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+  .group-progress-text { font-size: var(--fs-sm); color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; }
+  .group-progress-text strong { color: var(--text); }
+  .group-summary { font-size: var(--fs-sm); color: var(--text-2); }
+  .meter { height: 6px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+  .meter > span { display: block; height: 100%; width: 100%; transform-origin: left; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #f0386b)); border-radius: inherit; transition: transform var(--dur-3) var(--ease-out); }
+
+  .pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--s-3); }
+  .pl-card { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); transition: border-color var(--dur-2) ease, box-shadow var(--dur-2) ease; animation: row-in var(--dur-3) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 30ms); }
+  .pl-card[data-state="running"], .pl-card[data-state="waiting"] { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .pl-card[data-state="done"], .pl-card[data-state="library"] { border-color: color-mix(in srgb, var(--ok) 32%, transparent); }
+  .js-lib .i { color: var(--ok); }
+  .js-lib strong { color: var(--text); font-weight: 650; }
+  .pl-card[data-state="error"] { border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+  .pl-top { display: flex; gap: var(--s-3); align-items: center; min-width: 0; }
+  .pl-art {
+    width: 52px; height: 52px; flex: none; border-radius: var(--r-md);
+    display: grid; place-items: center; color: rgba(255,255,255,.95);
+    background: linear-gradient(135deg, hsl(var(--h) 78% var(--cover-l1)), hsl(calc(var(--h) + 50) 72% var(--cover-l2)));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
+  }
+  .pl-art .i { width: 24px; height: 24px; }
+  .pl-info { min-width: 0; flex: 1; }
+  .pl-name { font-size: var(--fs-base); font-weight: 680; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .pl-host { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: var(--fs-xs); color: var(--text-3); }
+  .pl-host span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-host .i { width: 12px; height: 12px; }
+  .pl-note { display: flex; gap: var(--s-2); font-size: var(--fs-xs); color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); line-height: 1.45; }
+  .pl-note .i { width: 14px; height: 14px; color: var(--warn); margin-top: 1px; }
+  .pl-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin-top: auto; min-height: 34px; }
+
+  .job-slot { min-width: 0; flex: 1; font-size: var(--fs-sm); }
+  .js { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); max-width: 100%; }
+  .js > span:not(.spinner) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .js .i { width: 15px; height: 15px; }
+  .js-running { color: var(--accent-text); }
+  .js-time { color: var(--text-3); font-variant-numeric: tabular-nums; flex: none; }
+  .js-waiting, .js-waiting .i { color: var(--warn); }
+  .js-done .i { color: var(--ok); }
+  .js-done strong { color: var(--text); }
+  .js-error, .js-error .i { color: var(--danger); }
+  .js-err-msg { display: block; font-size: var(--fs-xs); color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+  .job-btn.btn-secondary .i { color: var(--accent-text); }
+  .job-btn.is-cancel { color: var(--text); border-color: var(--border-strong); }
+
+  /* ==========================================================================
+     Add (scrape by URL / profile)
+     ========================================================================== */
+  .add-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); align-items: start; }
+  .add-card { padding: var(--s-6); display: flex; flex-direction: column; gap: var(--s-4); }
+  .add-card-head { display: flex; gap: var(--s-3); align-items: flex-start; }
+  .add-card-icon { width: 40px; height: 40px; border-radius: var(--r-md); display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent-text); }
+  .add-card-head h2 { font-size: var(--fs-lg); font-weight: 720; }
+  .add-card-head p { font-size: var(--fs-sm); color: var(--text-2); margin-top: 2px; }
+  .url-form { display: flex; gap: var(--s-2); }
+  .url-form .input { flex: 1; min-width: 0; }
+  .url-field { position: relative; flex: 1; min-width: 0; display: flex; }
+  .url-field.has-paste .input { padding-right: 92px; }
+  .paste-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); height: 36px !important; }
+  .paste-btn:active:not(:disabled) { transform: translateY(-50%) scale(.96); }
+  .url-form .btn { height: 46px; padding: 0 var(--s-5); }
+  .hint { font-size: var(--fs-xs); color: var(--text-3); margin-top: calc(var(--s-2) * -1); }
+  .hint button { font-size: inherit; color: var(--text-2); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; font-family: var(--font-mono); }
+  .status { font-size: var(--fs-sm); color: var(--text-2); }
+  .status:empty { display: none; }
+
+  .progress-block { border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--r-md); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); animation: pop-in var(--dur-3) var(--ease-out); }
+  .progress-top { display: flex; align-items: center; gap: var(--s-3); }
+  .progress-top .spinner { color: var(--accent-text); }
+  .progress-top .i { color: var(--warn); }
+  .progress-stage { flex: 1; min-width: 0; font-size: var(--fs-sm); font-weight: 600; }
+  .progress-stage small { display: block; font-weight: 400; color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .progress-time { font-variant-numeric: tabular-nums; font-size: var(--fs-lg); font-weight: 700; letter-spacing: -0.01em; }
+  .progress-foot { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--text-3); }
+
+  .found-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+  .found-head h3 { font-size: var(--fs-base); font-weight: 680; }
+  .found-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; max-height: 460px; overflow-y: auto; }
+  .found-item { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3); border-bottom: 1px solid var(--border); animation: row-in var(--dur-3) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 25ms); }
+  .found-item:last-child { border-bottom: 0; }
+  .found-item .pl-art { width: 40px; height: 40px; border-radius: 10px; }
+  .found-item .pl-art .i { width: 18px; height: 18px; }
+  .found-body { flex: 1; min-width: 0; }
+  .found-name { font-weight: 620; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .found-body .job-slot { font-size: var(--fs-xs); }
+
+  /* ==========================================================================
+     Now-playing dock
+     ========================================================================== */
+  .dock {
+    position: fixed; z-index: 45;
+    right: var(--s-5); bottom: calc(var(--s-5) + var(--tabbar-space));
+    width: 420px; max-width: calc(100vw - 2 * var(--s-4));
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: var(--r-lg); box-shadow: var(--shadow-3); overflow: hidden;
+    transform: translateY(calc(100% + 40px)); opacity: 0;
+    transition: transform var(--dur-3) var(--ease-spring), opacity var(--dur-2) ease;
+  }
+  .dock.is-open { transform: none; opacity: 1; }
+  .dock-head { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3); }
+  .dock-eq { position: relative; width: 34px; height: 34px; border-radius: 9px; flex: none; overflow: hidden; background: linear-gradient(135deg, var(--accent), #f0386b); }
+  .dock-eq .eq { display: flex; padding: 9px 8px; background: none; gap: 2px; }
+  .dock-eq .eq span { width: 3px; }
+  .dock-text { flex: 1; min-width: 0; line-height: 1.25; }
+  .dock-label { font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--text-2); }
+  .dock.is-playing .dock-label, .dock[data-status="ready"] .dock-label { color: var(--accent-text); }
+  .dock:not(.is-playing) .dock-eq { background: var(--surface-3); }
+  .dock:not(.is-playing) .dock-eq .eq span { background: var(--text-3); }
+  .dock.nudge iframe { animation: nudge .8s ease 2; }
+  @keyframes nudge { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent); } }
+  .dock-title { font-size: var(--fs-sm); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dock-artist { font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dock-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-3) var(--ease-out); }
+  .dock.is-min .dock-body { grid-template-rows: 0fr; }
+  .dock-body > div { overflow: hidden; min-height: 0; }
+  .dock-frame { padding: 0 var(--s-2) var(--s-2); }
+  .dock iframe { display: block; width: 100%; height: 120px; border: 0; border-radius: var(--r-sm); background: var(--surface-2); }
+  .dock-min-btn .i { transition: transform var(--dur-2) var(--ease-out); }
+  .dock.is-min .dock-min-btn .i { transform: rotate(180deg); }
+
+  /* ==========================================================================
+     Toasts
+     ========================================================================== */
+  .toasts {
+    position: fixed; z-index: 60; top: calc(var(--appbar-h) + var(--s-3)); right: var(--s-4);
+    display: flex; flex-direction: column; gap: var(--s-2); width: 380px; max-width: calc(100vw - 2 * var(--s-3));
+    pointer-events: none;
+  }
+  body.has-activity .toasts { top: calc(var(--appbar-h) + 44px + var(--s-3)); }
+  .toast {
+    pointer-events: auto;
+    display: flex; gap: var(--s-3); align-items: flex-start;
+    padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+    box-shadow: var(--shadow-3);
+    animation: toast-in var(--dur-3) var(--ease-spring);
+    font-size: var(--fs-sm);
+  }
+  .toast.is-leaving { animation: toast-out var(--dur-2) ease forwards; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-10px) scale(.97); } }
+  @keyframes toast-out { to { opacity: 0; transform: translateX(16px); } }
+  .toast > .i { margin-top: 1px; }
+  .toast-success > .i { color: var(--ok); }
+  .toast-error > .i { color: var(--danger); }
+  .toast-info > .i { color: var(--accent-text); }
+  .toast-body { flex: 1; min-width: 0; }
+  .toast-title { font-weight: 650; }
+  .toast-msg { color: var(--text-2); overflow-wrap: anywhere; }
+  .toast-action { margin-top: var(--s-2); }
+  .toast .btn-icon { margin: -4px -2px -4px 0; }
+
+  /* ==========================================================================
+     Dialog
+     ========================================================================== */
+  dialog {
+    border: 1px solid var(--border-strong); border-radius: var(--r-xl);
+    background: var(--surface); color: var(--text);
+    padding: 0; width: min(460px, calc(100vw - 32px));
+    box-shadow: var(--shadow-3);
+  }
+  dialog[open] { animation: dialog-in var(--dur-3) var(--ease-spring); }
+  dialog::backdrop { background: rgba(8, 8, 12, .5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+  @keyframes dialog-in { from { opacity: 0; transform: translateY(12px) scale(.97); } }
+  .dialog-body { padding: var(--s-6); display: flex; flex-direction: column; gap: var(--s-4); }
+  .dialog-body h2 { font-size: var(--fs-xl); font-weight: 750; }
+  .dialog-body p { font-size: var(--fs-sm); color: var(--text-2); }
+  .dialog-icon { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); }
+  .input-wrap { position: relative; }
+  .input-wrap .input { padding-right: 52px; font-family: var(--font-mono); }
+  .input-wrap .btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+  .input-wrap .btn:active:not(:disabled) { transform: translateY(-50%) scale(.95); }
+  .dialog-actions { display: flex; gap: var(--s-2); align-items: center; padding-top: var(--s-2); }
+  .dialog-actions .spacer { flex: 1; }
+
+  /* ==========================================================================
+     Responsive: tablet & phone
+     ========================================================================== */
+  /* Hover styles only where a real pointer hovers — on touch screens they
+     would otherwise stick after a tap. */
+  @media (hover: hover) {
+    a:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .btn:hover { text-decoration: none; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--border-strong); background: color-mix(in srgb, var(--surface-3) 80%, var(--text) 6%); }
+    .btn-ghost:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+    .btn-danger:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+    .link-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .input:hover, .select:hover { border-color: color-mix(in srgb, var(--border-strong) 60%, var(--text-3)); }
+    button.pill:hover { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
+    .brand:hover { text-decoration: none; }
+    .nav a:hover { color: var(--text); }
+    .chip:hover { color: var(--text); border-color: var(--text-3); }
+    .tag:hover .i { background: var(--border-strong); color: var(--text); }
+    .track:hover { background: var(--surface-2); }
+    .track:hover .cover-hover { opacity: 1; }
+    a.t-title:hover { color: var(--accent-text); }
+    .track.skeleton-row:hover { background: none; }
+    .genre-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+    .genre-tile:hover::before { transform: scale(1.15); }
+    .pl-card:hover { box-shadow: var(--shadow-2); }
+    .pl-host:hover { color: var(--accent-text); }
+    .hint button:hover { color: var(--accent-text); }
+    .found-item:hover { background: var(--surface-2); }
+    /* Keep active states intact on hover (these rules sit later in the cascade). */
+    .track.is-current:hover { background: var(--accent-soft); }
+    .t-play.is-current:hover:not(:disabled) { background: var(--accent-hover); color: var(--accent-ink); border-color: transparent; }
+    .chip[aria-pressed="true"]:hover { border-color: var(--accent); color: var(--accent-text); }
+    .genre-tile[aria-pressed="true"]:hover { box-shadow: 0 0 0 1px var(--accent), var(--shadow-2); }
+    .filters-toggle[aria-expanded="true"]:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft-2); }
+    .key-btn.key-set:hover:not(:disabled) { color: var(--ok); border-color: var(--ok); background: var(--ok-soft); }
+    .nav a[aria-current="page"]:hover { color: var(--text); }
+  }
+
+  @media (min-width: 761px) {
+    .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-3); align-items: center; }
+    .search-row { grid-column: 1; grid-row: 1; }
+    .filters { display: contents; }
+    .filter-selects { grid-column: 2; grid-row: 1; }
+    .filter-selects .field { width: 210px; flex: none; }
+    .filter-selects .field-sort { width: 160px; }
+    .filter-selects .field-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .genre-group { grid-column: 1 / -1; }
+    .active-filters { grid-column: 1 / -1; }
+    .filters-toggle { display: none !important; }
+    .genre-group .field-label { display: none; }
+
+    /* Desktop: the player is a centred bottom bar (title on the left, the
+       embed on the right) so it never sits on top of the Play column. */
+    .dock {
+      left: 0; right: 0; margin: 0 auto; bottom: var(--s-4);
+      width: min(calc(var(--content-w) - 2 * var(--s-6)), calc(100vw - 2 * var(--s-4)));
+      max-width: none;
+      display: flex; align-items: center;
+    }
+    .dock-head { width: 300px; flex: none; align-self: stretch; padding: var(--s-3); border-right: 1px solid var(--border); }
+    .dock-body { flex: 1; min-width: 0; }
+    .dock-frame { padding: var(--s-2); }
+    .dock.is-min .dock-head { border-right-color: transparent; }
+  }
+
+  @media (max-width: 960px) {
+    .track, .list-head { grid-template-columns: 44px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
+    .t-play-label, .t-dl-label { display: none; }
+    .t-play { min-width: 0; width: 34px; padding: 0; }
+    .list-head > :last-child { visibility: hidden; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .add-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  @media (max-width: 760px) {
+    :root { --appbar-h: 56px; --tabbar-space: calc(64px + env(safe-area-inset-bottom)); }
+    .appbar-inner { padding: 0 var(--s-4); padding-left: max(var(--s-4), env(safe-area-inset-left)); padding-right: max(var(--s-4), env(safe-area-inset-right)); }
+    .brand-sub { display: none; }
+    .key-btn .key-label { display: none; }
+    .key-btn { width: 44px; height: 44px; padding: 0; }
+    .key-btn .key-dot { position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; }
+    .activity-inner { padding: var(--s-2) var(--s-4); }
+    .activity-stage { display: none; }
+
+    /* Bottom tab bar (thumb-reachable) */
+    .nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+      margin: 0; padding: 6px var(--s-2) calc(6px + env(safe-area-inset-bottom));
+      border: 0; border-top: 1px solid var(--border); border-radius: 0;
+      background: var(--chrome-bg);
+      -webkit-backdrop-filter: saturate(160%) blur(18px);
+      backdrop-filter: saturate(160%) blur(18px);
+      justify-content: space-around;
+    }
+    .nav a {
+      flex: 1; flex-direction: column; gap: 3px; height: 52px; padding: 0;
+      justify-content: center; font-size: var(--fs-2xs); font-weight: 650; letter-spacing: .01em;
+      border-radius: var(--r-md);
+    }
+    .nav a .i { width: 56px; height: 28px; padding: 4px 18px; box-sizing: border-box; border-radius: var(--r-pill); transition: background-color var(--dur-2) ease, color var(--dur-2) ease; }
+    .nav a[aria-current="page"] { background: none; box-shadow: none; color: var(--text); }
+    .nav a[aria-current="page"] .i { background: var(--accent-soft-2); color: var(--accent-text); }
+    .nav .nav-badge { top: 4px; right: calc(50% - 26px); }
+
+    main { padding: var(--s-5) var(--s-4) calc(var(--s-10) + var(--tabbar-space) + var(--dock-space)); }
+    .view-head { margin-bottom: var(--s-4); flex-wrap: nowrap; align-items: flex-start; }
+    #catalog-refresh { display: none; } /* the empty/error states carry their own retry */
+    .view-head h1 { font-size: var(--fs-2xl); }
+    .view-head .lede { font-size: var(--fs-base); }
+
+    /* One compact overview strip instead of four tall cards. */
+    .stats {
+      grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+      box-shadow: var(--shadow-1); overflow: hidden;
+    }
+    .stats .stat { background: none; border: 0; border-radius: 0; box-shadow: none; padding: var(--s-3) var(--s-2); text-align: center; }
+    .stats .stat + .stat { border-left: 1px solid var(--border); }
+    .stats .stat:first-child { background: linear-gradient(160deg, var(--accent-soft-2), transparent 80%); }
+    .stat-label { justify-content: center; font-size: var(--fs-2xs); letter-spacing: .05em; }
+    .stat-label .i { display: none; }
+    .stat-value { font-size: var(--fs-lg); margin-top: 2px; }
+    .stat-sub, .genre-bar, .stat .ago, .lbl-long { display: none; }
+    .lbl-short { display: inline; }
+
+    .toolbar { padding: var(--s-3); }
+    .search .input { padding-right: var(--s-3); }
+    .search .input:not(:placeholder-shown) { padding-right: 44px; } /* room for the clear button */
+    .search .kbd { display: none; }
+    .filters:not(.is-open) { display: none; }
+    .filters.is-open { animation: pop-in var(--dur-2) var(--ease-out); }
+    .filter-selects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+    .filter-selects .select { font-size: 16px; padding-left: var(--s-3); padding-right: 32px; background-position: right 10px center; }
+    /* Genre chips: one swipeable row instead of a tall wall of pills. */
+    .genre-group .chips {
+      flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+      margin: 0 calc(var(--s-3) * -1); padding: 2px var(--s-3);
+      -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 24px), transparent);
+              mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 24px), transparent);
+    }
+    .genre-group .chips::-webkit-scrollbar { display: none; }
+    .genre-group .chip { flex: none; }
+    .btn { height: 44px; }
+    .btn-sm { height: 40px; }
+    .btn-icon { width: 44px; }
+    .btn-icon.btn-sm { width: 40px; }
+    .chip { height: 38px; }
+
+    .list-head { display: none; }
+    .list-card { border-radius: var(--r-lg); }
+    .track {
+      grid-template-columns: 48px minmax(0, 1fr) auto;
+      grid-template-areas: "cover main actions" "cover meta meta";
+      gap: 2px var(--s-3);
+      padding: var(--s-3);
+      align-items: start;
+    }
+    .cover { width: 48px; height: 48px; margin-top: 2px; }
+    .cover-hover { display: none; }
+    .t-main { align-self: center; }
+    .t-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+    .t-meta { grid-area: meta; display: flex; align-items: center; gap: var(--s-2); min-width: 0; margin-top: 6px; font-size: var(--fs-xs); }
+    .t-genre { flex: 0 1 auto; min-width: 0; max-width: 48%; }
+    .t-source { flex: 1; display: flex; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); min-width: 0; align-items: center; }
+    .t-source .src-name { flex: 0 1 auto; min-width: 0; }
+    .t-source time { flex: none; white-space: nowrap; }
+    .t-source time::before { content: "·"; margin-right: 6px; }
+    .t-actions { align-self: center; gap: 4px; }
+    .t-play { width: 44px; height: 44px; border-radius: 50%; }
+    .t-play .i { width: 16px; height: 16px; }
+    .t-dl { width: 40px; padding: 0; }
+
+    .pager { justify-content: center; }
+    .pager-info { width: 100%; text-align: center; order: 2; }
+
+    /* Two synced rows that scroll together: ~6 genres in view at once. */
+    .genre-grid {
+      grid-auto-flow: column; grid-template-rows: repeat(2, auto);
+      grid-template-columns: none; grid-auto-columns: max-content;
+      overflow-x: auto; scroll-snap-type: x proximity; gap: var(--s-2);
+      scroll-padding-inline: var(--s-4);
+      margin: 0 calc(var(--s-4) * -1) var(--s-5); padding: 2px var(--s-4) var(--s-2);
+      scrollbar-width: none;
+    }
+    .genre-grid::-webkit-scrollbar { display: none; }
+    .genre-tile { min-width: 104px; max-width: 190px; min-height: 54px; padding: 6px var(--s-3); scroll-snap-align: start; }
+    .genre-tile-name { font-size: var(--fs-sm); }
+    .panel-head { align-items: stretch; flex-direction: column; }
+    .group-bar { justify-content: stretch; }
+    .group-bar > .btn { flex: 1; }
+    .group-progress { flex: 1; min-width: 0; }
+    .pl-grid { grid-template-columns: minmax(0, 1fr); }
+
+    .add-card { padding: var(--s-4); }
+    .url-form { flex-direction: column; }
+    .url-form .input, .url-form .url-field { flex: none; }
+    .url-form .btn { width: 100%; }
+    .url-form .paste-btn { width: auto; padding: 0 var(--s-3); }
+
+    .dock { left: var(--s-2); right: var(--s-2); width: auto; max-width: none; bottom: calc(var(--tabbar-space) + var(--s-2)); }
+    /* Compact on phones: the embed already shows title + artist, so the
+       header is just status + controls (title returns when collapsed). */
+    .dock-head { gap: var(--s-2); padding: 2px 2px 2px var(--s-3); }
+    .dock-eq { width: 26px; height: 26px; border-radius: 7px; }
+    .dock-eq .eq { padding: 7px 6px; }
+    .dock:not(.is-min) .dock-title, .dock:not(.is-min) .dock-artist { display: none; }
+    .dock.is-min .dock-artist { display: none; }
+    .dock-frame { padding: 0 6px 6px; }
+    .dock iframe { height: 116px; }
+    .toasts { left: var(--s-3); right: var(--s-3); width: auto; max-width: none; top: calc(var(--appbar-h) + var(--s-2)); }
+    body.has-activity .toasts { top: calc(var(--appbar-h) + 44px + var(--s-2)); }
+    @keyframes toast-out { to { opacity: 0; transform: translateY(-10px); } }
+
+    dialog { margin: auto auto 0; width: 100%; max-width: 100%; border-radius: var(--r-xl) var(--r-xl) 0 0; border-bottom: 0; }
+    .dialog-body { padding-bottom: calc(var(--s-6) + env(safe-area-inset-bottom)); }
+    @keyframes dialog-in { from { transform: translateY(100%); } }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      animation-delay: 0ms !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+    /* Keep a (static) visible busy indicator rather than a frozen spinner arc. */
+    .spinner { border-right-color: currentColor; opacity: .5; }
+    .eq span { transform: scaleY(.6); }
+  }
 </style>
 </head>
 <body>
 
-<header style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
-  <div>
-    <h1>Project Apollo</h1>
-    <p>SoundCloud scraper — data lake → data warehouse</p>
+<a class="skip-link" href="#main" id="skip-link">Skip to content</a>
+
+<!-- Icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.6v14.8a1 1 0 0 0 1.52.85l12.1-7.4a1 1 0 0 0 0-1.7L8.52 3.75A1 1 0 0 0 7 4.6z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4.2" height="15" rx="1.3" fill="currentColor" stroke="none"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.3" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8.5" y="3" width="7" height="4" rx="1.2"/><path d="M15.5 5H18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.5"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11.5"/><path d="m7 10.5 5 5 5-5"/><path d="M5 20.5h14"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10.5 13.5"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3"/><path d="m16.5 6.5 3 3"/><path d="m14 9 2 2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a6.6 6.6 0 0 0 9.7 9.7z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><path d="M4 5.5h11M4 10.5h11M4 15.5h6"/><circle cx="17" cy="17.5" r="2.5"/><path d="M19.5 17.5V7l2 .8"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.1 5.5-5.5 2.1 2.1-5.5z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.6h.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11.5A8 8 0 0 0 5.6 6.8M4 3.5v4h4"/><path d="M4 12.5a8 8 0 0 0 14.4 4.7M20 20.5v-4h-4"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3.5 12v0M7.25 9v6M11 5v14M14.75 8v8M18.5 10.5v3M21 12v0"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.6A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.6 3.4M6.5 6.9C3.9 8.6 2.5 12 2.5 12s3.5 6.5 9.5 6.5a9.3 9.3 0 0 0 4.4-1.1"/><path d="M9.9 10a2.8 2.8 0 0 0 4 4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
+  <symbol id="i-disc" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2v12.5"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 24 24"><path d="m12 3.5 9 4.5-9 4.5L3 8z"/><path d="m3 12.5 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5" opacity=".5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.5 1.5"/><path d="M14 10.5a4.5 4.5 0 0 0-6.4-.4l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.1 6.1a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8" cy="8" r="1.4"/></symbol>
+</svg>
+
+<header class="appbar">
+  <div class="appbar-inner">
+    <a class="brand" href="#library" aria-label="Apollo — go to library">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <defs><linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a3d"/><stop offset="1" stop-color="#f0386b"/></linearGradient></defs>
+        <rect width="32" height="32" rx="9" fill="url(#brand-g)"/>
+        <path d="M8 17.5v-3M12 21v-10M16 24V8M20 21v-10M24 17.5v-3" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-text">
+        <span class="brand-name">Apollo</span>
+        <span class="brand-sub">SoundCloud lake → warehouse</span>
+      </span>
+    </a>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="#library" data-view="library"><svg class="i" aria-hidden="true"><use href="#i-library"/></svg><span>Library</span></a>
+      <a href="#discover" data-view="discover"><svg class="i" aria-hidden="true"><use href="#i-compass"/></svg><span>Discover</span></a>
+      <a href="#add" data-view="add"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg><span>Add</span><span class="nav-badge" id="add-badge" hidden></span></a>
+    </nav>
+
+    <div class="appbar-actions">
+      <button type="button" id="theme-btn" class="btn btn-ghost btn-icon" aria-label="Theme">
+        <svg class="i" aria-hidden="true"><use href="#i-auto"/></svg>
+      </button>
+      <button type="button" id="api-key-btn" class="btn btn-secondary btn-sm key-btn" title="Set the API key used for scrape/browse requests" aria-haspopup="dialog">
+        <svg class="i i-sm" aria-hidden="true"><use href="#i-key"/></svg>
+        <span class="key-label">API key</span>
+        <span class="key-dot" aria-hidden="true"></span>
+      </button>
+    </div>
   </div>
-  <button type="button" id="api-key-btn" class="icon-btn" style="margin-top:24px;" title="Set the API key used for scrape/browse requests">🔑 API key</button>
+
+  <div id="activity" class="activity" hidden>
+    <div class="activity-inner">
+      <span id="activity-icon" aria-hidden="true"></span>
+      <div class="activity-text" id="activity-text"></div>
+      <span class="activity-meta" id="activity-meta" aria-hidden="true"></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="activity-cancel">Cancel</button>
+    </div>
+    <div class="activity-bar" aria-hidden="true"></div>
+  </div>
 </header>
 
-<main>
-  <section class="panel">
-    <h2>Scrape a playlist / set</h2>
+<main id="main" tabindex="-1">
 
-    <div class="catalog-controls">
-      <select id="genre-select" aria-label="Genre"><option value="">Choose a genre…</option></select>
-      <select id="playlist-select" disabled aria-label="Playlist"><option value="">Choose a playlist…</option></select>
+  <!-- ============================== LIBRARY ============================== -->
+  <section class="view" data-view="library" aria-labelledby="library-title">
+    <div class="view-head">
+      <div>
+        <h1 id="library-title" tabindex="-1">Library</h1>
+        <p class="lede">Everything you've scraped, ready to play.</p>
+      </div>
     </div>
-    <div class="divider">or paste a URL</div>
 
-    <form id="scrape-form" class="scrape-form">
-      <input type="url" id="scrape-url" aria-label="SoundCloud playlist or set URL" placeholder="https://soundcloud.com/artist/sets/playlist" required>
-      <button type="submit" id="scrape-btn">Scrape</button>
-    </form>
-    <div id="scrape-status" class="status" role="status" aria-live="polite"></div>
+    <div id="stats" class="stats" hidden aria-label="Library overview"></div>
+
+    <div class="toolbar card" role="search">
+      <div class="search-row">
+        <div class="search">
+          <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+          <input type="search" id="search" class="input" aria-label="Filter tracks by artist or title" placeholder="Search tracks" autocomplete="off" spellcheck="false" enterkeyhint="search">
+          <div class="search-aside">
+            <button type="button" id="search-clear" class="btn btn-ghost btn-icon btn-sm" aria-label="Clear search" hidden><svg class="i i-sm" aria-hidden="true"><use href="#i-x"/></svg></button>
+            <kbd class="kbd" id="search-kbd" title="Press / to search">/</kbd>
+          </div>
+        </div>
+        <button type="button" id="filters-toggle" class="btn btn-secondary filters-toggle" aria-expanded="false" aria-controls="filters" hidden>
+          <svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg>
+          <span>Filters</span>
+          <span class="badge" id="filters-count" hidden></span>
+        </button>
+      </div>
+      <div id="filters" class="filters" hidden>
+        <div class="filter-selects">
+          <div class="field" id="source-field" hidden>
+            <label class="field-label" for="source-select">Source</label>
+            <select id="source-select" class="select"></select>
+          </div>
+          <div class="field field-sort" id="sort-field" hidden>
+            <label class="field-label" for="sort-select">Sort</label>
+            <select id="sort-select" class="select">
+              <option value="recent">Newest first</option>
+              <option value="artist">Artist A–Z</option>
+              <option value="title">Title A–Z</option>
+            </select>
+          </div>
+        </div>
+        <div class="genre-group" id="genre-group" hidden>
+          <span class="field-label" id="genre-label">Genre</span>
+          <div id="genre-chips" class="chips" role="group" aria-labelledby="genre-label"></div>
+        </div>
+      </div>
+      <div id="active-filters" class="active-filters" hidden></div>
+    </div>
+
+    <div class="card list-card" id="list-card">
+      <div class="list-progress" id="list-progress" hidden></div>
+      <div class="list-head" id="list-head" aria-hidden="true" hidden>
+        <span></span><span>Title</span><span>Genre</span><span>Source · Added</span><span>Play</span>
+      </div>
+      <div id="table-wrap"></div>
+    </div>
+    <nav id="pager" class="pager" aria-label="Pagination" hidden></nav>
   </section>
 
-  <section class="panel">
-    <h2>Browse a profile's playlists</h2>
-    <form id="browse-form" class="scrape-form">
-      <input type="url" id="browse-url" aria-label="SoundCloud profile URL" placeholder="https://soundcloud.com/some-artist" required>
-      <button type="submit" id="browse-btn">Browse</button>
-    </form>
-    <div id="browse-status" class="status" role="status" aria-live="polite"></div>
-    <div id="browse-results"></div>
+  <!-- ============================== DISCOVER ============================= -->
+  <section class="view" data-view="discover" aria-labelledby="discover-title" hidden>
+    <div class="view-head">
+      <div>
+        <h1 id="discover-title" tabindex="-1">Discover</h1>
+        <p class="lede">Hand-picked playlists by genre. Scrape one, or queue a whole genre in one tap.</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="catalog-refresh" aria-label="Reload catalog">
+        <svg class="i i-sm" aria-hidden="true"><use href="#i-refresh"/></svg><span>Reload</span>
+      </button>
+    </div>
+    <div id="catalog"></div>
   </section>
 
-  <section class="panel">
-    <div class="browse-controls">
-      <h2 style="margin:0;">Tracks</h2>
-      <input type="search" id="search" aria-label="Filter tracks by artist or title" placeholder="Filter by artist or title…" style="max-width: 260px;">
+  <!-- ================================ ADD ================================ -->
+  <section class="view" data-view="add" aria-labelledby="add-title" hidden>
+    <div class="view-head">
+      <div>
+        <h1 id="add-title" tabindex="-1">Add music</h1>
+        <p class="lede">Paste any SoundCloud playlist, set or profile — or explore a profile to pick its playlists.</p>
+      </div>
     </div>
-    <div id="table-wrap"></div>
-    <div id="pager" class="pager"></div>
+
+    <div class="add-grid">
+      <section class="card add-card" aria-labelledby="scrape-title">
+        <div class="add-card-head">
+          <div class="add-card-icon"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg></div>
+          <div>
+            <h2 id="scrape-title">Scrape a link</h2>
+            <p>Saves every track to your library. Usually takes 10–60 seconds.</p>
+          </div>
+        </div>
+        <form id="scrape-form" class="url-form" novalidate>
+          <div class="url-field">
+            <input type="url" id="scrape-url" class="input" aria-label="SoundCloud playlist or set URL" aria-describedby="scrape-hint" placeholder="https://soundcloud.com/artist/sets/playlist" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            <button type="button" class="btn btn-secondary btn-sm paste-btn" data-paste="scrape-url" hidden><svg class="i i-sm" aria-hidden="true"><use href="#i-clipboard"/></svg>Paste</button>
+          </div>
+          <button type="submit" id="scrape-btn" class="btn btn-primary">
+            <svg class="i" aria-hidden="true"><use href="#i-download"/></svg><span>Scrape</span>
+          </button>
+        </form>
+        <p class="hint" id="scrape-hint">e.g. <button type="button" data-fill="https://soundcloud.com/soundcloud-uk/sets/bassbin-fresh-drum-and-bass" data-target="scrape-url">soundcloud.com/…/sets/…</button> — playlists, sets and profiles all work.</p>
+        <div id="scrape-status" class="status visually-hidden" role="status" aria-live="polite"></div>
+        <div id="scrape-job"></div>
+      </section>
+
+      <section class="card add-card" aria-labelledby="browse-title">
+        <div class="add-card-head">
+          <div class="add-card-icon"><svg class="i" aria-hidden="true"><use href="#i-user"/></svg></div>
+          <div>
+            <h2 id="browse-title">Explore a profile</h2>
+            <p>Lists a profile's playlists without scraping — pick the ones you want.</p>
+          </div>
+        </div>
+        <form id="browse-form" class="url-form" novalidate>
+          <div class="url-field">
+            <input type="url" id="browse-url" class="input" aria-label="SoundCloud profile URL" placeholder="https://soundcloud.com/some-artist" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            <button type="button" class="btn btn-secondary btn-sm paste-btn" data-paste="browse-url" hidden><svg class="i i-sm" aria-hidden="true"><use href="#i-clipboard"/></svg>Paste</button>
+          </div>
+          <button type="submit" id="browse-btn" class="btn btn-secondary">
+            <svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span>Browse</span>
+          </button>
+        </form>
+        <div id="browse-status" class="status visually-hidden" role="status" aria-live="polite"></div>
+        <div id="browse-progress"></div>
+        <div id="browse-results"></div>
+      </section>
+    </div>
   </section>
 </main>
+
+<!-- Now-playing dock: lives outside the list so playback survives paging,
+     filtering and switching views. Official SoundCloud embed only. -->
+<section id="player-dock" class="dock" aria-label="Now playing" hidden>
+  <div class="dock-head">
+    <div class="dock-eq" aria-hidden="true"><div class="eq"><span></span><span></span><span></span></div></div>
+    <div class="dock-text">
+      <div class="dock-label" id="dock-label">Loading player…</div>
+      <div class="dock-title" id="dock-title"></div>
+      <div class="dock-artist" id="dock-artist"></div>
+    </div>
+    <button type="button" class="btn btn-ghost btn-icon btn-sm dock-min-btn" id="dock-min" aria-expanded="true" aria-controls="dock-body" aria-label="Collapse player"><svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button>
+    <button type="button" class="btn btn-ghost btn-icon btn-sm" id="dock-close" aria-label="Stop and close player"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="dock-body" id="dock-body"><div><div class="dock-frame" id="dock-frame"></div></div></div>
+</section>
+
+<div id="toasts" class="toasts" role="region" aria-label="Notifications" aria-live="polite"></div>
+<div id="announcer" class="visually-hidden" aria-live="polite" role="status"></div>
+
+<dialog id="key-dialog" aria-labelledby="key-title" aria-describedby="key-desc">
+  <form method="dialog" id="key-form" class="dialog-body">
+    <div class="dialog-icon"><svg class="i i-lg" aria-hidden="true"><use href="#i-key"/></svg></div>
+    <div>
+      <h2 id="key-title">API key</h2>
+      <p id="key-desc" style="margin-top:6px">Only needed if the server sets <code>APOLLO_API_KEY</code>. It's kept in this browser's localStorage and sent as the <code>X-API-Key</code> header on scrape and profile-browse requests.</p>
+    </div>
+    <div>
+      <label for="key-input" class="field-label">Key</label>
+      <div class="input-wrap">
+        <input id="key-input" class="input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
+        <button type="button" id="key-reveal" class="btn btn-ghost btn-icon btn-sm" aria-label="Show key" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-eye"/></svg></button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="key-clear" class="btn btn-ghost btn-danger">Clear</button>
+      <span class="spacer"></span>
+      <button type="button" id="key-cancel" class="btn btn-secondary">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="config.js"></script>
 <script>
 // config.js (generated per-deployment, see frontend/) sets window.APOLLO_API_BASE
-// to the API's own origin when the frontend is served separately from it — e.g.
-// "https://api.example.ts.net". Empty/missing means "same origin as this page",
-// which is what docker-compose's combined dev setup still relies on.
-const API_BASE = (window.APOLLO_API_BASE || "").replace(/\/$/, "");
+// (an explicit full origin override, e.g. "https://api.example.com" — empty
+// by default) and window.APOLLO_API_PORT (the API's port on whatever host
+// this page itself was loaded from). The derived form matters: this page's
+// own address might be a LAN IP, a Tailscale IP, or "localhost" depending on
+// who's viewing it and how, and the API is reachable at that *same* host,
+// just a different port — so hardcoding one full address would only work for
+// viewers on one of those network paths. location.hostname makes this work
+// correctly no matter which address loaded the page.
+const API_BASE = (
+  window.APOLLO_API_BASE ||
+  (window.APOLLO_API_PORT ? `${location.protocol}//${location.hostname}:${window.APOLLO_API_PORT}` : "")
+).replace(/\/$/, "");
 function apiUrl(path) {
   return API_BASE + path;
 }
@@ -230,184 +1317,578 @@ function authHeaders() {
   return key ? { "X-API-Key": key } : {};
 }
 
-const apiKeyBtn = document.getElementById("api-key-btn");
-function refreshApiKeyBtnState() {
-  const hasKey = Boolean(getApiKey());
-  apiKeyBtn.classList.toggle("key-set", hasKey);
-  apiKeyBtn.textContent = hasKey ? "🔑 API key set" : "🔑 API key";
-}
-apiKeyBtn.addEventListener("click", () => {
-  const current = getApiKey();
-  const next = window.prompt("API key for scrape/browse requests (leave blank to clear):", current);
-  if (next !== null) {
-    setApiKey(next.trim());
-    refreshApiKeyBtnState();
-  }
-});
-refreshApiKeyBtnState();
+/* ==========================================================================
+   Small utilities
+   ========================================================================== */
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-const state = { search: "", limit: 25, offset: 0, total: 0, playingUrl: null };
-
-const scrapeForm = document.getElementById("scrape-form");
-const scrapeUrlInput = document.getElementById("scrape-url");
-const scrapeBtn = document.getElementById("scrape-btn");
-const scrapeStatus = document.getElementById("scrape-status");
-const searchInput = document.getElementById("search");
-const tableWrap = document.getElementById("table-wrap");
-const pager = document.getElementById("pager");
-const genreSelect = document.getElementById("genre-select");
-const playlistSelect = document.getElementById("playlist-select");
-const browseForm = document.getElementById("browse-form");
-const browseUrlInput = document.getElementById("browse-url");
-const browseBtn = document.getElementById("browse-btn");
-const browseStatus = document.getElementById("browse-status");
-const browseResults = document.getElementById("browse-results");
-
-async function loadCatalog() {
-  try {
-    const res = await fetch(apiUrl("/api/playlists"));
-    if (!res.ok) return;
-    const catalog = await res.json();
-
-    for (const genre of Object.keys(catalog)) {
-      const opt = document.createElement("option");
-      opt.value = genre;
-      opt.textContent = genre;
-      genreSelect.appendChild(opt);
-    }
-
-    genreSelect.addEventListener("change", () => {
-      playlistSelect.innerHTML = '<option value="">Choose a playlist…</option>';
-      const entries = catalog[genreSelect.value] || [];
-      playlistSelect.disabled = entries.length === 0;
-      for (const entry of entries) {
-        const opt = document.createElement("option");
-        opt.value = entry.url;
-        opt.textContent = entry.note ? `${entry.name} ⚠` : entry.name;
-        opt.title = entry.note || "";
-        playlistSelect.appendChild(opt);
-      }
-    });
-
-    playlistSelect.addEventListener("change", () => {
-      if (playlistSelect.value) {
-        scrapeUrlInput.value = playlistSelect.value;
-        const selected = playlistSelect.options[playlistSelect.selectedIndex];
-        scrapeStatus.className = "status";
-        scrapeStatus.textContent = selected.title
-          ? `${selected.title} — click Scrape when ready.`
-          : "URL loaded — click Scrape when ready.";
-      }
-    });
-  } catch (err) {
-    console.error("Failed to load playlist catalog", err);
-  }
-}
-
-function fmtDate(iso) {
-  const d = new Date(iso);
-  return d.toLocaleString();
-}
-
+// Every API-derived string goes through this (or textContent) before it
+// touches the DOM — including values placed inside attributes.
 function escapeHtml(s) {
-  return (s ?? "").replace(/[&<>"']/g, c => ({
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
 }
-
-async function loadTracks() {
-  const params = new URLSearchParams({
-    search: state.search, limit: state.limit, offset: state.offset
-  });
-  let res;
+// Escaping alone doesn't stop a `javascript:` URL from running when clicked,
+// so anything rendered into an href must also be a real http(s) URL.
+function safeHttpUrl(u) {
+  if (!u) return "";
   try {
-    res = await fetch(apiUrl(`/api/tracks?${params}`));
-  } catch (err) {
-    // A thrown fetch (DNS/connection failure, unreachable API) rather than an
-    // HTTP error response — same user-facing treatment as the !res.ok case
-    // below, instead of leaving this silently blank.
-    tableWrap.innerHTML = `<div class="empty">Failed to reach the API (${err.message}). Is APOLLO_API_BASE (${API_BASE || "same origin"}) reachable from this device?</div>`;
-    return;
+    const parsed = new URL(String(u));
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.href : "";
+  } catch {
+    return "";
   }
-  if (!res.ok) {
-    tableWrap.innerHTML = `<div class="empty">Failed to load tracks (HTTP ${res.status}).</div>`;
-    return;
-  }
-  const page = await res.json();
-  state.total = page.total;
-  renderTable(page.items);
-  renderPager();
 }
-
-function embedUrl(trackUrl) {
-  return `https://w.soundcloud.com/player/?url=${encodeURIComponent(trackUrl)}&color=%23ff5500&auto_play=true&show_artwork=false&visual=false`;
+function icon(name, cls = "") {
+  return `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 }
+function storageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function storageSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* ignore */ } }
 
-function renderTable(items) {
-  if (items.length === 0) {
-    tableWrap.innerHTML = `<div class="empty">No tracks yet — scrape a playlist above to get started.</div>`;
-    return;
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString();
+}
+function timeAgo(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const s = Math.round((Date.now() - d.getTime()) / 1000);
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.round(h / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+}
+function fmtClock(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+function fmtNum(n) { return Number(n || 0).toLocaleString(); }
+function plural(n, one, many = one + "s") { return `${fmtNum(n)} ${n === 1 ? one : many}`; }
+function hue(str) {
+  let h = 7;
+  for (const ch of String(str || "")) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return h % 360;
+}
+function initials(name) {
+  const words = String(name || "").replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "♪";
+  return (Array.from(words[0])[0] + (words[1] ? Array.from(words[1])[0] : "")).toUpperCase();
+}
+function humanizeSlug(slug) {
+  let s = slug;
+  try { s = decodeURIComponent(slug); } catch { /* keep raw */ }
+  s = s.replace(/[-_]+/g, " ").trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+// Compare SoundCloud URLs loosely: scheme, www./m., query, hash, trailing
+// slash and case don't change which playlist/profile a URL points at.
+function normUrl(u) {
+  return String(u || "").trim().toLowerCase()
+    .replace(/[?#].*$/, "").replace(/^https?:\/\//, "").replace(/^(www|m)\./, "").replace(/\/+$/, "");
+}
+// Human-friendly name for a source URL: the catalog's own name if we know it,
+// else derived from the path (/user/sets/some-name → "Some name").
+const knownNames = new Map();
+function sourceParts(url) {
+  const known = knownNames.get(normUrl(url));
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split("/").filter(Boolean);
+    const user = parts[0] ? `@${parts[0]}` : u.hostname;
+    if (known) return { name: known, sub: user };
+    if (parts[1] === "sets" && parts[2]) return { name: humanizeSlug(parts[2]), sub: user };
+    if (parts.length > 1) return { name: humanizeSlug(parts[parts.length - 1]), sub: user };
+    return { name: user, sub: "profile" };
+  } catch {
+    return { name: known || String(url || "Unknown source"), sub: "" };
   }
-  const rows = items.map(t => {
-    const isPlaying = state.playingUrl === t.url;
-    const rowHtml = `
-    <tr data-url="${escapeHtml(t.url || "")}">
-      <td>${escapeHtml(t.artist)}</td>
-      <td>${t.url ? `<a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">${escapeHtml(t.title)}</a>` : escapeHtml(t.title)}</td>
-      <td class="genre">${escapeHtml(t.genre) || "—"}</td>
-      <td class="scraped_at">${fmtDate(t.scraped_at)}</td>
-      <td class="actions">
-        ${t.url ? `<button class="icon-btn play-btn ${isPlaying ? "playing" : ""}" data-url="${escapeHtml(t.url)}">${isPlaying ? "■ Stop" : "▶ Play"}</button>` : ""}
-        ${t.downloadable && t.url ? `<a class="icon-btn" href="${escapeHtml(t.url)}" target="_blank" rel="noopener" title="Opens the track's SoundCloud page — download only if the artist enabled it there">⬇ Download</a>` : ""}
-      </td>
-    </tr>`;
-    const playerHtml = isPlaying ? `
-    <tr class="player-row"><td colspan="5">
-      <iframe src="${embedUrl(t.url)}" allow="autoplay" title="${escapeHtml(`SoundCloud player — ${t.artist} – ${t.title}`)}"></iframe>
-    </td></tr>` : "";
-    return rowHtml + playerHtml;
-  }).join("");
-
-  tableWrap.innerHTML = `
-    <table>
-      <thead>
-        <tr><th>Artist</th><th>Title</th><th>Genre</th><th>Scraped</th><th>Play</th></tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
-
-  // One track plays at a time: clicking Play on another row stops the current
-  // one first (no simultaneous/mass playback), and Stop just closes it.
-  tableWrap.querySelectorAll(".play-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const url = btn.dataset.url;
-      state.playingUrl = state.playingUrl === url ? null : url;
-      renderTable(items);
-    });
+}
+function sourceLabel(url) { return sourceParts(url).name; }
+function hostPath(url) {
+  try { const u = new URL(url); return (u.hostname.replace(/^www\./, "") + u.pathname).replace(/\/$/, ""); } catch { return String(url || ""); }
+}
+function highlight(text, q) {
+  const s = String(text ?? "");
+  if (!q) return escapeHtml(s);
+  const lower = s.toLowerCase(), ql = q.toLowerCase();
+  if (lower.length !== s.length) return escapeHtml(s);
+  let out = "", i = 0, idx;
+  while ((idx = lower.indexOf(ql, i)) !== -1) {
+    out += escapeHtml(s.slice(i, idx)) + "<mark>" + escapeHtml(s.slice(idx, idx + ql.length)) + "</mark>";
+    i = idx + ql.length;
+  }
+  return out + escapeHtml(s.slice(i));
+}
+function sleep(ms, signal) {
+  return new Promise(resolve => {
+    if (signal?.aborted) return resolve(false);
+    const t = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(true); }, ms);
+    function onAbort() { clearTimeout(t); resolve(false); }
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
-
-function renderPager() {
-  const from = state.total === 0 ? 0 : state.offset + 1;
-  const to = Math.min(state.offset + state.limit, state.total);
-  pager.innerHTML = `
-    <button id="prev-btn" ${state.offset === 0 ? "disabled" : ""}>Prev</button>
-    <span>${from}–${to} of ${state.total}</span>
-    <button id="next-btn" ${to >= state.total ? "disabled" : ""}>Next</button>
-  `;
-  document.getElementById("prev-btn").onclick = () => {
-    state.offset = Math.max(0, state.offset - state.limit);
-    loadTracks();
-  };
-  document.getElementById("next-btn").onclick = () => {
-    state.offset = state.offset + state.limit;
-    loadTracks();
-  };
+async function readBody(res) {
+  try { return await res.json(); } catch {
+    // Non-JSON error body (e.g. a proxy/nginx error page instead of the
+    // API's own JSON) — callers fall back to a status-code message instead
+    // of surfacing a raw "Unexpected token" parse error.
+    return {};
+  }
 }
+function detailText(body) {
+  if (!body || typeof body !== "object") return "";
+  if (typeof body.detail === "string") return body.detail;
+  if (Array.isArray(body.detail)) return body.detail.map(d => d && d.msg).filter(Boolean).join("; ");
+  if (typeof body.error === "string") return body.error;
+  return "";
+}
+
+/* ==========================================================================
+   Error explanations — every failure says what happened and what to do next
+   ========================================================================== */
+function explainError(status, body, err) {
+  const detail = detailText(body);
+  if (status === 0) {
+    return {
+      title: "Can't reach the API",
+      message: `Couldn't connect to ${API_BASE || (location.origin !== "null" ? location.origin : "the API")}. Check the server is running and reachable from this device.`,
+      detail: err && err.message,
+    };
+  }
+  if (status === 401) {
+    return {
+      title: "API key needed",
+      message: "This server requires an API key for scraping and browsing. Set it with the API key button in the top bar, then try again.",
+      detail, action: "set-key",
+    };
+  }
+  if (status === 422) {
+    if (/logged in/i.test(detail)) {
+      return {
+        title: "Login-only page",
+        message: "SoundCloud only shows this page to its logged-in owner (like a personal Discover Weekly). Try a public playlist instead, or configure APOLLO_SOUNDCLOUD_COOKIES on the server.",
+        detail,
+      };
+    }
+    if (/soundcloud\.com/i.test(detail)) {
+      return {
+        title: "Not a SoundCloud link",
+        message: "Only soundcloud.com URLs can be scraped. Paste a link like https://soundcloud.com/artist/sets/playlist.",
+        detail,
+      };
+    }
+    return { title: "That link doesn't look right", message: "Paste a full URL starting with https://soundcloud.com/.", detail };
+  }
+  if (status === 429) {
+    return {
+      title: "Rate limit reached",
+      message: "The server allows a limited number of requests per minute. Give it a minute, then try again.",
+      detail,
+    };
+  }
+  if (status === 502) {
+    return {
+      title: "SoundCloud didn't cooperate",
+      message: "The page couldn't be fetched — it may be private or deleted, or SoundCloud is slow right now. Check the link opens in your browser, then retry.",
+      detail,
+    };
+  }
+  if (status >= 500) {
+    return { title: "Server error", message: `Something went wrong on the server (HTTP ${status}). Check the API logs.`, detail };
+  }
+  return { title: `Request failed (HTTP ${status})`, message: detail || "Unexpected response from the API.", detail: "" };
+}
+function calloutHtml(kind, title, message, { detail = "", actionsHtml = "" } = {}) {
+  const ic = { error: "alert", success: "check", info: "info", warn: "alert" }[kind] || "info";
+  return `<div class="callout callout-${kind}">${icon(ic)}<div class="callout-body">
+    <div class="callout-title">${escapeHtml(title)}</div>
+    ${message ? `<div class="callout-msg">${escapeHtml(message)}</div>` : ""}
+    ${actionsHtml ? `<div class="callout-actions">${actionsHtml}</div>` : ""}
+    ${detail ? `<details><summary>Technical details</summary><code>${escapeHtml(detail)}</code></details>` : ""}
+  </div></div>`;
+}
+function errorCallout(e) {
+  const actions = e.action === "set-key" ? `<button type="button" class="btn btn-secondary btn-sm" data-action="set-key">${icon("key", "i-sm")}Set API key</button>` : "";
+  return calloutHtml("error", e.title, e.message, { detail: e.detail, actionsHtml: actions });
+}
+// Client-side check before spending a request (the server enforces it too).
+function normalizeScUrl(raw) {
+  let v = String(raw || "").trim();
+  if (!v) return { error: { title: "Paste a link first", message: "Copy a playlist or profile URL from SoundCloud and paste it here." } };
+  if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+  let u;
+  try { u = new URL(v); } catch {
+    return { error: { title: "That link doesn't look right", message: "Paste a full URL, like https://soundcloud.com/artist/sets/playlist." } };
+  }
+  if (!/(^|\.)soundcloud\.com$/i.test(u.hostname)) {
+    return { error: { title: "Not a SoundCloud link", message: `“${u.hostname}” isn't soundcloud.com — only SoundCloud playlists, sets and profiles can be scraped.` } };
+  }
+  return { url: u.href };
+}
+
+/* ==========================================================================
+   Announcer + toasts
+   ========================================================================== */
+const announcer = $("#announcer");
+function announce(msg) {
+  announcer.textContent = "";
+  setTimeout(() => { announcer.textContent = msg; }, 60);
+}
+const toastsEl = $("#toasts");
+function toast({ kind = "info", title, message = "", actionLabel, onAction, timeout }) {
+  const el = document.createElement("div");
+  el.className = `toast toast-${kind}`;
+  const ic = { success: "check", error: "alert", info: "info" }[kind];
+  el.innerHTML = `${icon(ic)}<div class="toast-body"><div class="toast-title">${escapeHtml(title)}</div>
+    ${message ? `<div class="toast-msg">${escapeHtml(message)}</div>` : ""}
+    ${actionLabel ? `<div class="toast-action"><button type="button" class="link-btn">${escapeHtml(actionLabel)}</button></div>` : ""}
+    </div><button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Dismiss notification">${icon("x", "i-sm")}</button>`;
+  const dismiss = () => {
+    if (el.classList.contains("is-leaving")) return;
+    el.classList.add("is-leaving");
+    setTimeout(() => el.remove(), reducedMotion.matches ? 0 : 200);
+  };
+  el.querySelector(".btn-icon").addEventListener("click", dismiss);
+  if (actionLabel) el.querySelector(".toast-action button").addEventListener("click", () => { dismiss(); onAction && onAction(); });
+  toastsEl.prepend(el);
+  while (toastsEl.children.length > 4) toastsEl.lastElementChild.remove();
+  let remaining = timeout ?? (kind === "error" ? 9000 : 5000);
+  let timer, started;
+  const start = () => { started = Date.now(); timer = setTimeout(dismiss, remaining); };
+  const pause = () => { clearTimeout(timer); remaining -= Date.now() - started; };
+  el.addEventListener("mouseenter", pause);
+  el.addEventListener("mouseleave", start);
+  el.addEventListener("focusin", pause);
+  el.addEventListener("focusout", start);
+  start();
+}
+
+/* ==========================================================================
+   Theme (system / light / dark)
+   ========================================================================== */
+const themeBtn = $("#theme-btn");
+const THEMES = ["system", "light", "dark"];
+function currentTheme() { const t = storageGet("apollo_theme"); return t === "light" || t === "dark" ? t : "system"; }
+function applyTheme(t) {
+  if (t === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  const next = THEMES[(THEMES.indexOf(t) + 1) % THEMES.length];
+  const label = { system: "System", light: "Light", dark: "Dark" };
+  themeBtn.innerHTML = icon({ system: "auto", light: "sun", dark: "moon" }[t]);
+  themeBtn.setAttribute("aria-label", `Theme: ${label[t]}. Switch to ${label[next]}.`);
+  themeBtn.title = `Theme: ${label[t]}`;
+  const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+  $("#theme-color-meta").setAttribute("content", dark ? "#0a0b0e" : "#f5f4f1");
+}
+themeBtn.addEventListener("click", () => {
+  const next = THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length];
+  storageSet("apollo_theme", next === "system" ? null : next);
+  applyTheme(next);
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => applyTheme(currentTheme()));
+applyTheme(currentTheme());
+
+/* ==========================================================================
+   API key dialog
+   ========================================================================== */
+const apiKeyBtn = document.getElementById("api-key-btn");
+const keyDialog = $("#key-dialog");
+const keyInput = $("#key-input");
+const keyReveal = $("#key-reveal");
+function refreshApiKeyBtnState() {
+  const hasKey = Boolean(getApiKey());
+  apiKeyBtn.classList.toggle("key-set", hasKey);
+  $(".key-label", apiKeyBtn).textContent = hasKey ? "API key set" : "API key";
+  apiKeyBtn.setAttribute("aria-label", hasKey ? "API key set — change or clear it" : "API key not set — set one");
+}
+function openKeyDialog() {
+  keyInput.value = getApiKey();
+  keyInput.type = "password";
+  keyReveal.setAttribute("aria-pressed", "false");
+  keyReveal.setAttribute("aria-label", "Show key");
+  keyReveal.innerHTML = icon("eye");
+  $("#key-clear").disabled = !getApiKey();
+  keyDialog.showModal();
+  keyInput.focus();
+  keyInput.select();
+}
+apiKeyBtn.addEventListener("click", openKeyDialog);
+keyReveal.addEventListener("click", () => {
+  const show = keyInput.type === "password";
+  keyInput.type = show ? "text" : "password";
+  keyReveal.setAttribute("aria-pressed", String(show));
+  keyReveal.setAttribute("aria-label", show ? "Hide key" : "Show key");
+  keyReveal.innerHTML = icon(show ? "eye-off" : "eye");
+});
+$("#key-cancel").addEventListener("click", () => keyDialog.close());
+$("#key-clear").addEventListener("click", () => {
+  setApiKey("");
+  refreshApiKeyBtnState();
+  keyDialog.close();
+  toast({ kind: "info", title: "API key cleared" });
+});
+$("#key-form").addEventListener("submit", () => {
+  const v = keyInput.value.trim();
+  setApiKey(v);
+  refreshApiKeyBtnState();
+  toast({ kind: "success", title: v ? "API key saved" : "API key cleared", message: v ? "It'll be sent with scrape and browse requests." : "" });
+});
+keyDialog.addEventListener("click", e => { if (e.target === keyDialog) keyDialog.close(); });
+keyDialog.addEventListener("close", () => apiKeyBtn.focus());
+refreshApiKeyBtnState();
+
+/* ==========================================================================
+   Views (hash routing)
+   ========================================================================== */
+const VIEWS = ["library", "discover", "add"];
+const navLinks = $$(".nav a");
+const viewEls = $$("main .view");
+function viewFromHash() { const h = location.hash.slice(1); return VIEWS.includes(h) ? h : "library"; }
+function showView(v, { focus = false } = {}) {
+  viewEls.forEach(el => { el.hidden = el.dataset.view !== v; });
+  navLinks.forEach(a => {
+    if (a.dataset.view === v) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+  const names = { library: "Library", discover: "Discover", add: "Add music" };
+  document.title = `${names[v]} · Apollo`;
+  if (v === "discover" && catalog.status !== "loading" && (catalog.status !== "ready" || !Object.keys(catalog.data).length)) loadCatalog();
+  if (focus) {
+    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    const h = $(`.view[data-view="${v}"] h1`);
+    h && h.focus({ preventScroll: true });
+  }
+}
+window.addEventListener("hashchange", () => showView(viewFromHash(), { focus: true }));
+function goTo(v) {
+  if (viewFromHash() === v && location.hash) showView(v, { focus: true });
+  else location.hash = v;
+}
+$("#skip-link").addEventListener("click", e => { e.preventDefault(); $("#main").focus(); });
+
+/* ==========================================================================
+   Feature detection — /api/stats and the tracks filter params (genre,
+   source_url, sort) shipped together, so a successful /api/stats response
+   turns the overview + filter UI on; an older API (404) just hides them.
+   ========================================================================== */
+const features = { stats: true, genre: false, source: false, sort: false };
+
+/* ==========================================================================
+   Library: state, stats, filters, tracks
+   ========================================================================== */
+const state = {
+  search: "", genre: "", source: "", sort: "recent",
+  limit: 25, offset: 0, total: 0, items: [],
+  loaded: false, pending: false, genresExpanded: false, filtersOpen: false,
+};
+let stats = null;
+
+const statsEl = $("#stats");
+const searchInput = document.getElementById("search");
+const searchClear = $("#search-clear");
+const filtersEl = $("#filters");
+const filtersToggle = $("#filters-toggle");
+const genreChips = $("#genre-chips");
+const sourceSelect = $("#source-select");
+const sortSelect = $("#sort-select");
+const activeFiltersEl = $("#active-filters");
+const listCard = $("#list-card");
+const listHead = $("#list-head");
+const listProgress = $("#list-progress");
+const tableWrap = document.getElementById("table-wrap");
+const pager = document.getElementById("pager");
+
+function statsSkeleton() {
+  return Array.from({ length: 4 }, () => `<div class="card stat"><span class="skeleton" style="width:60px;height:10px"></span><span class="skeleton" style="width:70%;height:28px;margin-top:10px"></span><span class="skeleton" style="width:50%;height:10px;margin-top:8px"></span></div>`).join("");
+}
+async function loadStats() {
+  if (!features.stats) { stats = null; applyFeatureVisibility(); return; }
+  if (!stats) { statsEl.hidden = false; statsEl.innerHTML = statsSkeleton(); }
+  try {
+    const res = await fetch(apiUrl("/api/stats"));
+    if (res.status === 404) throw Object.assign(new Error("unsupported"), { unsupported: true });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data || typeof data.total_tracks !== "number") throw new Error("bad shape");
+    const first = !stats;
+    const hadFilters = features.genre;
+    stats = data;
+    features.genre = features.source = features.sort = true;
+    renderStats(first);
+    refreshLibraryState();
+    // Rows rendered before we knew filtering exists get clickable genre pills.
+    if (!hadFilters && state.items.length) renderTable(state.items);
+  } catch (err) {
+    // Older API: hide the overview + filters (search still works). A
+    // transient failure keeps whatever overview we already had.
+    if (err.unsupported || !stats) {
+      stats = null;
+      if (err.unsupported) features.stats = false;
+    }
+  }
+  applyFeatureVisibility();
+  renderFilters();
+}
+function animateNumber(el, to) {
+  if (reducedMotion.matches || to < 10) { el.textContent = fmtNum(to); return; }
+  const from = Number(el.dataset.value || 0);
+  el.dataset.value = to;
+  const start = performance.now(), dur = 700;
+  const step = now => {
+    const p = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmtNum(Math.round(from + (to - from) * eased));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+function renderStats(animate) {
+  if (!stats) return;
+  const genres = (stats.genres || []).filter(g => g && g.genre);
+  const top = genres.slice(0, 6);
+  const topTotal = genres.reduce((a, g) => a + (g.count || 0), 0) || 1;
+  const last = stats.last_scraped_at;
+  const topSource = (stats.sources || []).slice().sort((a, b) => b.track_count - a.track_count)[0];
+  statsEl.innerHTML = `
+    <div class="card stat">
+      <div class="stat-label">${icon("disc")}Tracks</div>
+      <div class="stat-value" data-num="${Number(stats.total_tracks) || 0}">${fmtNum(stats.total_tracks)}</div>
+      <div class="stat-sub">in your warehouse</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">${icon("layers")}Sources</div>
+      <div class="stat-value" data-num="${Number(stats.total_sources) || 0}">${fmtNum(stats.total_sources)}</div>
+      <div class="stat-sub" title="${escapeHtml(topSource ? topSource.source_url : "")}">${topSource ? `Biggest: ${escapeHtml(sourceLabel(topSource.source_url))}` : "playlists &amp; profiles"}</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">${icon("tag")}Genres</div>
+      <div class="stat-value" data-num="${genres.length}">${fmtNum(genres.length)}</div>
+      <div class="genre-bar" aria-hidden="true">${top.map(g => `<span style="--h:${hue(g.genre)};flex:${(g.count / topTotal).toFixed(4)}" title="${escapeHtml(g.genre)}"></span>`).join("")}<span style="flex:${Math.max(0, 1 - top.reduce((a, g) => a + g.count, 0) / topTotal).toFixed(4)};background:var(--border-strong)"></span></div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">${icon("clock")}<span class="lbl-long">Last scrape</span><span class="lbl-short">Updated</span></div>
+      <div class="stat-value">${last ? escapeHtml(timeAgo(last)).replace(/ ago$/, '<span class="ago"> ago</span>') : "Never"}</div>
+      <div class="stat-sub">${last ? `<time datetime="${escapeHtml(last)}">${escapeHtml(fmtDate(last))}</time>` : "scrape something to start"}</div>
+    </div>`;
+  statsEl.hidden = false;
+  if (animate) $$("[data-num]", statsEl).forEach(el => { el.textContent = "0"; animateNumber(el, Number(el.dataset.num)); });
+}
+function applyFeatureVisibility() {
+  const anyFilter = features.genre || features.source || features.sort;
+  statsEl.hidden = !stats;
+  filtersEl.hidden = !anyFilter;
+  filtersToggle.hidden = !anyFilter;
+  $("#genre-group").hidden = !(features.genre && stats && (stats.genres || []).some(g => g && g.genre));
+  $("#source-field").hidden = !(features.source && stats && (stats.sources || []).length);
+  $("#sort-field").hidden = !features.sort;
+  // Drop any filter state the server can't honour.
+  if (!features.genre) state.genre = "";
+  if (!features.source) state.source = "";
+  if (!features.sort) state.sort = "recent";
+}
+const GENRES_COLLAPSED = 10;
+function renderFilters() {
+  if (!stats) { renderActiveFilters(); return; }
+  if (features.genre) {
+    const genres = (stats.genres || []).filter(g => g && g.genre);
+    const selectedLc = state.genre.toLowerCase();
+    let shown = state.genresExpanded ? genres : genres.slice(0, GENRES_COLLAPSED);
+    if (state.genre && !shown.some(g => g.genre.toLowerCase() === selectedLc)) {
+      const sel = genres.find(g => g.genre.toLowerCase() === selectedLc) || { genre: state.genre, count: null };
+      shown = [...shown, sel];
+    }
+    const hiddenCount = genres.length - shown.length;
+    genreChips.innerHTML =
+      `<button type="button" class="chip" data-genre="" aria-pressed="${!state.genre}"><span class="chip-name">All genres</span></button>` +
+      shown.map(g => `<button type="button" class="chip" data-genre="${escapeHtml(g.genre)}" aria-pressed="${g.genre.toLowerCase() === selectedLc}">
+        <span class="chip-name">${escapeHtml(g.genre)}</span>${g.count != null ? `<span class="chip-count">${fmtNum(g.count)}</span>` : ""}</button>`).join("") +
+      (genres.length > GENRES_COLLAPSED
+        ? `<button type="button" class="chip chip-more" data-genre-more aria-expanded="${state.genresExpanded}">${state.genresExpanded ? "Show fewer" : `+${hiddenCount} more`}</button>`
+        : "");
+  }
+  if (features.source) {
+    const sources = (stats.sources || []).slice().sort((a, b) => b.track_count - a.track_count);
+    const opts = [`<option value="">All sources</option>`].concat(sources.map(s => {
+      const p = sourceParts(s.source_url);
+      return `<option value="${escapeHtml(s.source_url)}"${s.source_url === state.source ? " selected" : ""}>${escapeHtml(p.name)}${p.sub ? ` (${escapeHtml(p.sub)})` : ""} · ${fmtNum(s.track_count)}</option>`;
+    }));
+    if (state.source && !sources.some(s => s.source_url === state.source)) {
+      opts.push(`<option value="${escapeHtml(state.source)}" selected>${escapeHtml(sourceLabel(state.source))}</option>`);
+    }
+    sourceSelect.innerHTML = opts.join("");
+    sourceSelect.value = state.source;
+  }
+  sortSelect.value = state.sort;
+  renderActiveFilters();
+}
+function activeFilterCount() {
+  return (state.genre ? 1 : 0) + (state.source ? 1 : 0) + (state.sort !== "recent" ? 1 : 0);
+}
+function renderActiveFilters() {
+  const n = activeFilterCount();
+  const badge = $("#filters-count");
+  badge.hidden = n === 0;
+  badge.textContent = n;
+  filtersToggle.setAttribute("aria-label", n ? `Filters, ${n} active` : "Filters");
+  const tags = [];
+  if (state.search.trim()) tags.push(`<button type="button" class="tag" data-clear="search" aria-label="Remove search filter ${escapeHtml(state.search.trim())}"><span>“${escapeHtml(state.search.trim())}”</span>${icon("x")}</button>`);
+  if (state.genre) tags.push(`<button type="button" class="tag" data-clear="genre" aria-label="Remove genre filter ${escapeHtml(state.genre)}"><span>${escapeHtml(state.genre)}</span>${icon("x")}</button>`);
+  if (state.source) tags.push(`<button type="button" class="tag" data-clear="source" aria-label="Remove source filter"><span>${escapeHtml(sourceLabel(state.source))}</span>${icon("x")}</button>`);
+  if (!tags.length) { activeFiltersEl.hidden = true; activeFiltersEl.innerHTML = ""; return; }
+  activeFiltersEl.hidden = false;
+  activeFiltersEl.innerHTML = `<span class="count">${state.loaded && !state.pending ? plural(state.total, "match", "matches") : `<span class="filtering"><span class="spinner" aria-hidden="true"></span>Filtering…</span>`}</span>${tags.join("")}
+    <button type="button" class="btn btn-ghost btn-sm" data-clear="all">Clear filters</button>`;
+}
+function clearFilters(which = "all") {
+  if (which === "all" || which === "search") { state.search = ""; searchInput.value = ""; searchClear.hidden = true; }
+  if (which === "all" || which === "genre") state.genre = "";
+  if (which === "all" || which === "source") state.source = "";
+  if (which === "all") state.sort = "recent";
+  state.offset = 0;
+  renderFilters();
+  loadTracks();
+}
+function setGenre(g) {
+  state.genre = g;
+  state.offset = 0;
+  renderFilters();
+  loadTracks();
+}
+
+genreChips.addEventListener("click", e => {
+  const more = e.target.closest("[data-genre-more]");
+  if (more) { state.genresExpanded = !state.genresExpanded; renderFilters(); $("[data-genre-more]", genreChips)?.focus(); return; }
+  const chip = e.target.closest("[data-genre]");
+  if (!chip) return;
+  const g = chip.dataset.genre;
+  setGenre(state.genre.toLowerCase() === g.toLowerCase() ? "" : g);
+  const again = $$("[data-genre]", genreChips).find(b => b.dataset.genre === (state.genre ? g : ""));
+  again && again.focus();
+});
+sourceSelect.addEventListener("change", () => { state.source = sourceSelect.value; state.offset = 0; renderActiveFilters(); loadTracks(); });
+sortSelect.addEventListener("change", () => { state.sort = sortSelect.value; state.offset = 0; renderActiveFilters(); loadTracks(); });
+activeFiltersEl.addEventListener("click", e => {
+  const b = e.target.closest("[data-clear]");
+  if (!b) return;
+  clearFilters(b.dataset.clear);
+  searchInput.focus();
+});
+filtersToggle.addEventListener("click", () => {
+  state.filtersOpen = !state.filtersOpen;
+  filtersEl.classList.toggle("is-open", state.filtersOpen);
+  filtersToggle.setAttribute("aria-expanded", String(state.filtersOpen));
+});
 
 let searchDebounce;
 searchInput.addEventListener("input", () => {
+  searchClear.hidden = !searchInput.value;
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => {
     state.search = searchInput.value;
@@ -415,116 +1896,1306 @@ searchInput.addEventListener("input", () => {
     loadTracks();
   }, 300);
 });
+searchInput.addEventListener("keydown", e => {
+  if (e.key === "Escape" && searchInput.value) { e.preventDefault(); clearFilters("search"); }
+});
+searchClear.addEventListener("click", () => { clearFilters("search"); searchInput.focus(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t.closest && t.closest("input, textarea, select, [contenteditable], dialog")) return;
+  e.preventDefault();
+  if (viewFromHash() !== "library") goTo("library");
+  searchInput.focus();
+  searchInput.select();
+});
+
+function skeletonRows(n = 8) {
+  return `<ul class="track-list" aria-hidden="true">${Array.from({ length: n }, (_, i) => `
+    <li class="track skeleton-row">
+      <span class="skeleton sk-cover" style="grid-area:cover"></span>
+      <div class="t-main"><span class="skeleton" style="height:13px;width:${55 + (i * 17) % 35}%"></span><span class="skeleton" style="height:11px;width:${30 + (i * 11) % 25}%;margin-top:8px"></span></div>
+      <div class="t-meta"><div class="t-genre"><span class="skeleton" style="height:20px;width:72px;border-radius:99px"></span></div>
+      <div class="t-source"><span class="skeleton" style="height:11px;width:80%"></span></div></div>
+      <div class="t-actions"><span class="skeleton" style="height:34px;width:34px;border-radius:10px"></span></div>
+    </li>`).join("")}</ul>`;
+}
+
+let tracksController = null;
+let tracksReq = 0;
+async function loadTracks({ quiet = false } = {}) {
+  const reqId = ++tracksReq;
+  tracksController?.abort();
+  tracksController = new AbortController();
+  const params = new URLSearchParams({ search: state.search.trim(), limit: state.limit, offset: state.offset });
+  if (features.genre && state.genre) params.set("genre", state.genre);
+  if (features.source && state.source) params.set("source_url", state.source);
+  if (features.sort && state.sort !== "recent") params.set("sort", state.sort);
+  if (!quiet) { state.pending = true; renderActiveFilters(); }
+  if (!state.loaded) {
+    tableWrap.innerHTML = skeletonRows();
+    listHead.hidden = false;
+  } else if (!quiet) {
+    listCard.setAttribute("aria-busy", "true");
+    listProgress.hidden = false;
+  }
+  let res;
+  try {
+    res = await fetch(apiUrl(`/api/tracks?${params}`), { signal: tracksController.signal });
+  } catch (err) {
+    if (err.name === "AbortError") return;
+    // A thrown fetch (DNS/connection failure, unreachable API) rather than an
+    // HTTP error response — same user-facing treatment as the !res.ok case.
+    finishTracksLoad(reqId);
+    renderTracksError(explainError(0, {}, err));
+    return;
+  }
+  if (reqId !== tracksReq) return;
+  if (!res.ok) {
+    const body = await readBody(res);
+    finishTracksLoad(reqId);
+    renderTracksError({ title: "Couldn't load tracks", message: `The API answered with HTTP ${res.status}.`, detail: detailText(body) });
+    return;
+  }
+  let page;
+  try { page = await res.json(); } catch { page = null; }
+  if (reqId !== tracksReq) return;
+  finishTracksLoad(reqId);
+  if (!page || !Array.isArray(page.items)) {
+    renderTracksError({ title: "Couldn't load tracks", message: "The API returned an unexpected response." });
+    return;
+  }
+  state.total = Number(page.total) || 0;
+  // A refresh can shrink the result set out from under the current page.
+  if (state.offset > 0 && state.offset >= state.total) {
+    state.offset = Math.max(0, Math.floor((state.total - 1) / state.limit) * state.limit);
+    return loadTracks({ quiet: true });
+  }
+  state.items = page.items;
+  state.loaded = true;
+  renderTable(page.items);
+  renderPager();
+  renderActiveFilters();
+  if (state.search.trim() || state.genre || state.source) announce(`${plural(state.total, "track")} found`);
+}
+function finishTracksLoad(reqId) {
+  if (reqId !== tracksReq) return;
+  state.pending = false;
+  listCard.removeAttribute("aria-busy");
+  listProgress.hidden = true;
+}
+function renderTracksError(e) {
+  renderActiveFilters();
+  listHead.hidden = true;
+  pager.hidden = true;
+  tableWrap.innerHTML = `<div class="state">
+    <div class="state-icon is-error">${icon("alert", "i-lg")}</div>
+    <h3>${escapeHtml(e.title)}</h3>
+    <p>${escapeHtml(e.message)}</p>
+    ${e.detail ? `<p><code>${escapeHtml(e.detail)}</code></p>` : ""}
+    <div class="state-actions"><button type="button" class="btn btn-primary" data-action="retry-tracks">${icon("refresh")}Try again</button></div>
+  </div>`;
+}
+
+function embedUrl(trackUrl) {
+  return `https://w.soundcloud.com/player/?url=${encodeURIComponent(trackUrl)}&color=%23ff5500&auto_play=true&show_artwork=false&visual=false`;
+}
+
+function trackHtml(t, i) {
+  const url = safeHttpUrl(t.url);
+  const q = state.search.trim();
+  const title = t.title || "Untitled";
+  const artist = t.artist || "Unknown artist";
+  const fk = escapeHtml(url || `row-${t.id ?? i}`);
+  const genre = t.genre
+    ? (features.genre
+        ? `<button type="button" class="pill" data-filter-genre="${escapeHtml(t.genre)}" data-fk="genre:${fk}" title="Show only ${escapeHtml(t.genre)}"><span>${escapeHtml(t.genre)}</span></button>`
+        : `<span class="pill" title="${escapeHtml(t.genre)}"><span>${escapeHtml(t.genre)}</span></span>`)
+    : `<span class="pill pill-empty">No genre</span>`;
+  const src = sourceParts(t.source_url);
+  const titleHtml = url
+    ? `<a class="t-title" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-fk="title:${fk}" title="${escapeHtml(title)} — open on SoundCloud">${highlight(title, q)}</a>`
+    : `<span class="t-title">${highlight(title, q)}</span>`;
+  const pb = playButtonState(url, t);
+  const playBtn = url
+    ? `<button type="button" class="btn btn-secondary btn-sm t-play${pb.current ? " is-current" : ""}${pb.playing ? " is-playing" : ""}" data-play="${escapeHtml(url)}" data-fk="play:${fk}" aria-label="${escapeHtml(pb.label)}">${pb.html}</button>`
+    : "";
+  // Strictly true: only when SoundCloud's own data says the artist enabled downloads.
+  const dl = t.downloadable === true && url
+    ? `<a class="btn btn-ghost btn-sm t-dl" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-fk="dl:${fk}" title="Opens the track's SoundCloud page — download only if the artist enabled it there" aria-label="Download ${escapeHtml(title)} on SoundCloud (opens the track's page)">${icon("download", "i-sm")}<span class="t-dl-label">Download</span></a>`
+    : "";
+  return `<li class="track${pb.current ? " is-current" : ""}${pb.playing ? " is-playing" : ""}" data-idx="${i}" style="--i:${Math.min(i, 14)}">
+    <span class="cover" style="--h:${hue(artist + "|" + title)}" data-cover aria-hidden="true">${escapeHtml(initials(artist))}
+      <span class="cover-hover">${icon("play")}</span>
+      <span class="eq"><span></span><span></span><span></span></span>
+    </span>
+    <div class="t-main">${titleHtml}<div class="t-artist">${highlight(artist, q)}</div></div>
+    <div class="t-meta">
+      <div class="t-genre">${genre}</div>
+      <div class="t-source"><span class="src-name" title="${escapeHtml(t.source_url || "")}">${escapeHtml(src.name)}</span>
+        <time data-ago datetime="${escapeHtml(t.scraped_at || "")}" title="Scraped ${escapeHtml(fmtDate(t.scraped_at))}">${escapeHtml(timeAgo(t.scraped_at))}</time></div>
+    </div>
+    <div class="t-actions">${dl}${playBtn}</div>
+  </li>`;
+}
+
+function renderTable(items) {
+  // Preserve keyboard focus across re-renders (e.g. a background refresh
+  // after a scrape finishes while the user is tabbing through the list).
+  const active = document.activeElement;
+  const fk = active && tableWrap.contains(active) ? active.dataset.fk : null;
+
+  if (items.length === 0) {
+    listHead.hidden = true;
+    const filtered = state.search.trim() || state.genre || state.source;
+    tableWrap.innerHTML = filtered
+      ? `<div class="state">
+          <div class="state-icon">${icon("search", "i-lg")}</div>
+          <h3>No tracks match</h3>
+          <p>Nothing in your library matches ${state.search.trim() ? `“${escapeHtml(state.search.trim())}”` : "these filters"}${state.genre ? ` in ${escapeHtml(state.genre)}` : ""}. Try a different search or clear the filters.</p>
+          <div class="state-actions"><button type="button" class="btn btn-secondary" data-clear="all">${icon("x")}Clear filters</button></div>
+        </div>`
+      : `<div class="state">
+          <div class="state-icon">${icon("disc", "i-lg")}</div>
+          <h3>Your library is empty</h3>
+          <p>Scrape a SoundCloud playlist and its tracks will land here — playable right in the page.</p>
+          <div class="state-actions">
+            <button type="button" class="btn btn-primary" data-goto="discover">${icon("compass")}Browse the catalog</button>
+            <button type="button" class="btn btn-secondary" data-goto="add">${icon("link")}Scrape a link</button>
+          </div>
+        </div>`;
+    return;
+  }
+  listHead.hidden = false;
+  tableWrap.innerHTML = `<ul class="track-list" role="list" aria-label="Tracks">${items.map(trackHtml).join("")}</ul>`;
+  if (fk) {
+    const again = $$("[data-fk]", tableWrap).find(el => el.dataset.fk === fk);
+    again && again.focus({ preventScroll: true });
+  }
+}
+
+function renderPager() {
+  const focusedId = pager.contains(document.activeElement) ? document.activeElement.id : "";
+  if (state.total === 0) { pager.hidden = true; return; }
+  pager.hidden = false;
+  const from = state.offset + 1;
+  const to = Math.min(state.offset + state.limit, state.total);
+  const pages = Math.max(1, Math.ceil(state.total / state.limit));
+  const page = Math.floor(state.offset / state.limit) + 1;
+  pager.innerHTML = `
+    <div class="pager-info">Showing <strong>${fmtNum(from)}–${fmtNum(to)}</strong> of <strong>${fmtNum(state.total)}</strong> tracks</div>
+    ${pages > 1 ? `<div class="pager-controls">
+      <button type="button" class="btn btn-secondary btn-sm" id="prev-btn" ${state.offset === 0 ? "disabled" : ""} aria-label="Previous page">${icon("left", "i-sm")}Prev</button>
+      <span class="pager-page">Page ${page} of ${pages}</span>
+      <button type="button" class="btn btn-secondary btn-sm" id="next-btn" ${to >= state.total ? "disabled" : ""} aria-label="Next page">Next${icon("right", "i-sm")}</button>
+    </div>` : ""}`;
+  const go = delta => {
+    state.offset = Math.max(0, state.offset + delta * state.limit);
+    loadTracks().then(() => {
+      const top = listCard.getBoundingClientRect().top;
+      if (top < 0) listCard.scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "start" });
+    });
+  };
+  $("#prev-btn", pager) && ($("#prev-btn", pager).onclick = () => go(-1));
+  $("#next-btn", pager) && ($("#next-btn", pager).onclick = () => go(1));
+  // innerHTML just replaced the focused button — put focus back on the same
+  // control (or its enabled sibling at the first/last page, else the list).
+  if (focusedId) {
+    const same = $("#" + focusedId, pager);
+    const target = same && !same.disabled ? same : $("button:not(:disabled)", pager) || $("[data-play]", tableWrap);
+    target && target.focus({ preventScroll: true });
+  }
+}
+
+tableWrap.addEventListener("click", e => {
+  const playBtn = e.target.closest("[data-play]");
+  const cover = e.target.closest("[data-cover]");
+  if (playBtn || cover) {
+    const li = e.target.closest(".track");
+    const t = li && state.items[Number(li.dataset.idx)];
+    if (t) togglePlay(t);
+    return;
+  }
+  const g = e.target.closest("[data-filter-genre]");
+  if (g) {
+    setGenre(g.dataset.filterGenre);
+    announce(`Filtered to ${g.dataset.filterGenre}`);
+  }
+});
+
+// "12m ago" labels would drift apart (stat card vs rows) without this.
+setInterval(() => {
+  $$("time[data-ago]").forEach(el => { el.textContent = timeAgo(el.getAttribute("datetime")); });
+  if (stats) renderStats(false);
+}, 60000);
+
+let refreshTimer;
+function scheduleLibraryRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    features.stats = true; // re-probe: the API may have been upgraded meanwhile
+    loadStats();
+    loadTracks({ quiet: true });
+  }, 350);
+}
+
+/* ==========================================================================
+   Player dock — official w.soundcloud.com embed, one track at a time.
+   Play state comes from the widget itself (its postMessage event protocol,
+   the same one SoundCloud's widget api.js speaks) — never assumed from a tap,
+   because autoplay is often blocked (iOS) and the user can pause inside the
+   embed. Nothing auto-advances: one track, on explicit user action.
+   ========================================================================== */
+const SC_ORIGIN = "https://w.soundcloud.com";
+const player = { url: null, track: null, frame: null, status: "idle", minimized: false, nudgeTimer: null, readyTimer: null };
+// When autoplay works the widget sends "ready" ~0.5s before "play"; only show
+// the press-play instruction if no "play" arrives within this grace period.
+const AUTOPLAY_GRACE_MS = 1800;
+const dock = $("#player-dock");
+const dockFrame = $("#dock-frame");
+const dockMin = $("#dock-min");
+const dockLabel = $("#dock-label");
+const PLAYER_LABELS = {
+  loading: "Loading player…",
+  ready: "Press ▶ in the player to start",
+  playing: "Now playing",
+  paused: "Paused",
+  finished: "Finished",
+};
+function widgetPost(method, value) {
+  const w = player.frame && player.frame.contentWindow;
+  if (!w) return;
+  w.postMessage(JSON.stringify(value === undefined ? { method } : { method, value }), SC_ORIGIN);
+}
+function subscribeWidget() {
+  ["play", "pause", "finish"].forEach(ev => widgetPost("addEventListener", ev));
+}
+window.addEventListener("message", e => {
+  if (e.origin !== SC_ORIGIN || !player.frame || e.source !== player.frame.contentWindow) return;
+  let d = e.data;
+  if (typeof d === "string") { try { d = JSON.parse(d); } catch { return; } }
+  if (!d || typeof d.method !== "string") return;
+  if (d.method === "ready") {
+    subscribeWidget();
+    if (player.status === "loading" && !player.readyTimer) {
+      const frame = player.frame;
+      player.readyTimer = setTimeout(() => {
+        player.readyTimer = null;
+        if (player.frame === frame && player.status === "loading") setPlayerStatus("ready");
+      }, AUTOPLAY_GRACE_MS);
+    }
+  } else if (d.method === "play") setPlayerStatus("playing");
+  else if (d.method === "pause") setPlayerStatus("paused");
+  else if (d.method === "finish") setPlayerStatus("finished");
+});
+function setPlayerStatus(status) {
+  // Any real state change (play, teardown, switching track) cancels the grace timer.
+  clearTimeout(player.readyTimer);
+  player.readyTimer = null;
+  const prev = player.status;
+  player.status = status;
+  dock.dataset.status = status;
+  dock.classList.toggle("is-playing", status === "playing");
+  dockLabel.textContent = PLAYER_LABELS[status] || "";
+  syncPlayButtons();
+  if (status === prev || !player.track) return;
+  const name = `${player.track.title || "track"} by ${player.track.artist || "unknown artist"}`;
+  if (status === "playing") { clearTimeout(player.nudgeTimer); announce(`Playing ${name}`); }
+  else if (status === "paused") announce(`Paused ${name}`);
+  else if (status === "finished") announce(`Finished ${name}`);
+  else if (status === "ready") announce("Player ready. Press play in the SoundCloud player to start.");
+}
+function togglePlay(t) {
+  const url = safeHttpUrl(t.url);
+  if (!url) return;
+  if (player.url === url && player.frame) {
+    // Same track: ask the embed to play/pause; the UI only changes when the
+    // widget reports the real state back.
+    if (player.status === "playing") { widgetPost("pause"); return; }
+    widgetPost("play");
+    clearTimeout(player.nudgeTimer);
+    player.nudgeTimer = setTimeout(() => {
+      if (player.status === "playing") return;
+      // Blocked (e.g. iOS): make sure the embed's own ▶ is visible and point at it.
+      setMinimized(false);
+      dock.classList.remove("nudge"); void dock.offsetWidth; dock.classList.add("nudge");
+    }, 1200);
+    return;
+  }
+  // One track at a time: loading another replaces the only iframe.
+  player.url = url;
+  player.track = t;
+  dockFrame.innerHTML = "";
+  const f = document.createElement("iframe");
+  f.src = embedUrl(url);
+  f.allow = "autoplay";
+  f.title = `SoundCloud player — ${t.artist || "Unknown artist"} – ${t.title || "Untitled"}`;
+  f.addEventListener("load", subscribeWidget);
+  player.frame = f;
+  dockFrame.appendChild(f);
+  $("#dock-title").textContent = t.title || "Untitled";
+  $("#dock-artist").textContent = t.artist || "Unknown artist";
+  dock.hidden = false;
+  setMinimized(false);
+  setPlayerStatus("loading");
+  requestAnimationFrame(() => requestAnimationFrame(() => dock.classList.add("is-open")));
+}
+function stopPlayback() {
+  if (!player.url) return;
+  player.url = null;
+  player.frame = null;
+  clearTimeout(player.nudgeTimer);
+  dockFrame.innerHTML = "";
+  dock.classList.remove("is-open");
+  setPlayerStatus("idle");
+  player.track = null;
+  setTimeout(() => { if (!player.url) { dock.hidden = true; updateDockSpace(); } }, reducedMotion.matches ? 0 : 320);
+  announce("Player closed");
+}
+function setMinimized(min) {
+  player.minimized = min;
+  dock.classList.toggle("is-min", min);
+  dockMin.setAttribute("aria-expanded", String(!min));
+  dockMin.setAttribute("aria-label", min ? "Expand player" : "Collapse player");
+  setTimeout(updateDockSpace, reducedMotion.matches ? 0 : 330);
+}
+// The row button is a plain Play/Pause whose label reflects the widget's real
+// state (label swap only — no aria-pressed on top of it).
+function playButtonState(url, t) {
+  const current = Boolean(url) && url === player.url;
+  const playing = current && player.status === "playing";
+  const verb = playing ? "Pause" : "Play";
+  return {
+    current, playing,
+    html: `${icon(playing ? "pause" : "play")}<span class="t-play-label">${verb}</span>`,
+    label: `${verb} ${t.title || "Untitled"} by ${t.artist || "Unknown artist"}`,
+  };
+}
+function syncPlayButtons() {
+  $$(".track", tableWrap).forEach(li => {
+    const t = state.items[Number(li.dataset.idx)];
+    const btn = $("[data-play]", li);
+    if (!t || !btn) return;
+    const st = playButtonState(btn.dataset.play, t);
+    li.classList.toggle("is-current", st.current);
+    li.classList.toggle("is-playing", st.playing);
+    btn.classList.toggle("is-current", st.current);
+    btn.classList.toggle("is-playing", st.playing);
+    if (btn.getAttribute("aria-label") !== st.label) {
+      btn.setAttribute("aria-label", st.label);
+      btn.innerHTML = st.html;
+    }
+  });
+}
+function updateDockSpace() {
+  const h = dock.hidden ? 0 : dock.getBoundingClientRect().height + 16;
+  document.documentElement.style.setProperty("--dock-space", `${Math.round(h)}px`);
+}
+dockMin.addEventListener("click", () => setMinimized(!player.minimized));
+$("#dock-close").addEventListener("click", stopPlayback);
+if ("ResizeObserver" in window) new ResizeObserver(updateDockSpace).observe(dock);
+
+/* ==========================================================================
+   Scrape queue — every scrape (single link, catalog card, "scrape all")
+   runs through one sequential queue: courteous to SoundCloud, and makes the
+   /scrape rate limit (10/min) something we can wait out automatically.
+   ========================================================================== */
+const jobs = [];
+const jobsById = new Map();
+const groups = new Map();
+const latestGroupByKey = new Map();
+const scrapeHits = [];
+let jobSeq = 0, groupSeq = 0, pumping = false, tickTimer = null;
+const MAX_ATTEMPTS = 6;
+const SCRAPE_STAGES = [
+  [0, "Starting a headless browser…"],
+  [3500, "Opening the SoundCloud page…"],
+  [8000, "Scrolling so every track lazy-loads…"],
+  [20000, "Reading track details…"],
+  [38000, "Big one — still loading tracks…"],
+  [70000, "Taking longer than usual — hang tight…"],
+];
+
+function isActive(j) { return Boolean(j) && (j.status === "queued" || j.status === "running" || j.status === "waiting"); }
+function latestJobFor(url) {
+  const n = normUrl(url);
+  for (let i = jobs.length - 1; i >= 0; i--) if (normUrl(jobs[i].url) === n) return jobs[i];
+  return null;
+}
+function currentJob() { return jobs.find(j => j.status === "running" || j.status === "waiting") || null; }
+function queuedAhead(job) {
+  return jobs.filter(j => j.status === "queued" && j.id < job.id).length + (currentJob() ? 1 : 0);
+}
+function jobStage(job) {
+  const el = Date.now() - (job.startedAt || Date.now());
+  let s = SCRAPE_STAGES[0][1];
+  for (const [t, txt] of SCRAPE_STAGES) if (el >= t) s = txt;
+  return s;
+}
+function jobPct(job) {
+  if (job.status !== "running") return 0;
+  const el = (Date.now() - job.startedAt) / 1000;
+  return Math.min(0.94, 1 - Math.exp(-el / 22));
+}
+
+function enqueue(url, { name, group } = {}) {
+  const existing = latestJobFor(url);
+  if (isActive(existing)) return existing;
+  const job = { id: ++jobSeq, url, name: name || sourceLabel(url), group: group || null, status: "queued", attempts: 0, notified: false };
+  jobs.push(job);
+  jobsById.set(job.id, job);
+  onJobsChanged();
+  pump();
+  return job;
+}
+async function pump() {
+  if (pumping) return;
+  pumping = true;
+  startTicker();
+  try {
+    let job;
+    while ((job = jobs.find(j => j.status === "queued"))) await runJob(job);
+  } finally {
+    pumping = false;
+    onJobsChanged();
+  }
+}
+function rateLimitWait(body) {
+  // slowapi body: {"error": "Rate limit exceeded: 10 per 1 minute"}. Retry-After
+  // isn't CORS-exposed, so estimate from our own recent requests instead.
+  const m = /(\d+)\s+per\s+(\d+)?\s*(second|minute|hour|day)/i.exec(detailText(body));
+  const unit = m ? { second: 1, minute: 60, hour: 3600, day: 86400 }[m[3].toLowerCase()] : 60;
+  const windowMs = Math.min(3600, (m && m[2] ? Number(m[2]) : 1) * unit) * 1000;
+  const now = Date.now();
+  const recent = scrapeHits.filter(t => now - t < windowMs);
+  const earliest = recent.length ? Math.min(...recent) : now;
+  const until = earliest + windowMs - now + 1500;
+  return Math.max(8000, Math.min(windowMs + 1500, until));
+}
+async function runJob(job) {
+  job.controller = new AbortController();
+  for (;;) {
+    job.status = "running";
+    job.startedAt = Date.now();
+    job.attempts++;
+    onJobsChanged();
+    let res, body;
+    try {
+      scrapeHits.push(Date.now());
+      while (scrapeHits.length > 50) scrapeHits.shift();
+      res = await fetch(apiUrl("/scrape"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ url: job.url }),
+        signal: job.controller.signal,
+      });
+      body = await readBody(res);
+    } catch (err) {
+      if (job.status === "cancelled") return;
+      if (err.name === "AbortError") { finishJob(job, "cancelled"); return; }
+      finishJob(job, "error", { error: explainError(0, {}, err) });
+      return;
+    }
+    if (job.status === "cancelled") return;
+    if (res.status === 429 && job.attempts < MAX_ATTEMPTS) {
+      const wait = rateLimitWait(body);
+      job.status = "waiting";
+      job.retryAt = Date.now() + wait;
+      onJobsChanged();
+      announce(`Rate limited. Retrying ${job.name} in ${Math.ceil(wait / 1000)} seconds.`);
+      const ok = await sleep(wait, job.controller.signal);
+      if (!ok || job.status === "cancelled") return;
+      continue;
+    }
+    if (!res.ok) {
+      finishJob(job, "error", { error: explainError(res.status, body) });
+      if (res.status === 401) haltQueue("API key needed");
+      return;
+    }
+    finishJob(job, "done", { result: body });
+    scheduleLibraryRefresh();
+    return;
+  }
+}
+function finishJob(job, status, extra = {}) {
+  job.status = status;
+  job.finishedAt = Date.now();
+  Object.assign(job, extra);
+  onJobsChanged();
+}
+function cancelJob(job) {
+  if (!isActive(job)) return;
+  job.cancelledWhile = job.status; // only a "running" one may still land server-side
+  job.status = "cancelled";
+  job.finishedAt = Date.now();
+  job.notified = true;
+  job.controller?.abort();
+  onJobsChanged();
+}
+// Every later scrape would fail the same way (e.g. 401) — stop rather than
+// burn through the queue.
+function haltQueue(reason) {
+  // The auth toast already explains this; skip the per-group "finished" toast.
+  groups.forEach(g => { if (!g.notified && groupStats(g).active) g.notified = true; });
+  jobs.filter(j => j.status === "queued").forEach(j => {
+    j.status = "error"; j.finishedAt = Date.now(); j.notified = true;
+    j.error = { title: "Skipped", message: `${reason} — queue stopped.` };
+  });
+  onJobsChanged();
+}
+function cancelAll() {
+  const active = jobs.filter(isActive);
+  groups.forEach(g => { if (!g.notified && groupStats(g).active) g.notified = true; });
+  active.slice().reverse().forEach(cancelJob);
+  const wasRunning = active.some(j => j.cancelledWhile === "running");
+  if (active.length) toast({ kind: "info", title: active.length > 1 ? `Cancelled ${active.length} scrapes` : "Scrape cancelled", message: wasRunning ? "The one already running on the server may still finish and appear in your library." : "" });
+}
+function startGroup(key, label, items) {
+  const g = { id: `g${++groupSeq}`, key, label, jobIds: [], notified: false };
+  groups.set(g.id, g);
+  latestGroupByKey.set(key, g.id);
+  items.forEach(it => { const j = enqueue(it.url, { name: it.name, group: g.id }); g.jobIds.push(j.id); });
+  announce(`Queued ${plural(items.length, "playlist")} from ${label}`);
+  onJobsChanged();
+  return g;
+}
+function groupStats(g) {
+  const js = g.jobIds.map(id => jobsById.get(id)).filter(Boolean);
+  const s = { total: js.length, done: 0, failed: 0, cancelled: 0, active: 0, tracks: 0, current: null };
+  js.forEach(j => {
+    if (j.status === "done") { s.done++; s.tracks += Number(j.result?.track_count) || 0; }
+    else if (j.status === "error") s.failed++;
+    else if (j.status === "cancelled") s.cancelled++;
+    else s.active++;
+    if (j.status === "running" || j.status === "waiting") s.current = j;
+  });
+  s.finished = s.done + s.failed + s.cancelled;
+  return s;
+}
+function cancelGroup(gid) {
+  const g = groups.get(gid);
+  if (!g) return;
+  g.notified = true; // one summary toast below instead of a second "finished" one
+  g.jobIds.map(id => jobsById.get(id)).filter(isActive).reverse().forEach(cancelJob);
+  const s = groupStats(g);
+  toast({
+    kind: "info", title: `Stopped “${g.label}”`,
+    message: s.done ? `${s.done} of ${s.total} scraped · ${plural(s.tracks, "track")} saved to your library.` : "Nothing was saved from this run.",
+  });
+}
+
+function viewSource(sourceUrl) {
+  state.search = ""; searchInput.value = ""; searchClear.hidden = true;
+  state.genre = "";
+  state.source = features.source ? sourceUrl : "";
+  state.sort = "recent";
+  state.offset = 0;
+  renderFilters();
+  loadTracks();
+  goTo("library");
+}
+
+function notifyJobs() {
+  jobs.forEach(j => {
+    if (j.notified || isActive(j)) return;
+    j.notified = true;
+    if (j.group) {
+      // Group members report through the group summary, except auth failures.
+      if (j.status === "error" && j.error?.action === "set-key") {
+        toast({ kind: "error", title: j.error.title, message: j.error.message, actionLabel: "Set API key", onAction: openKeyDialog });
+      }
+      return;
+    }
+    if (j.status === "done") {
+      const n = Number(j.result?.track_count) || 0;
+      toast({
+        kind: "success", title: `${plural(n, "track")} saved`, message: `From ${j.name}`,
+        actionLabel: "View in library", onAction: () => viewSource(j.result?.source_url || j.url),
+      });
+    } else if (j.status === "error") {
+      toast({
+        kind: "error", title: j.error.title, message: j.error.message,
+        ...(j.error.action === "set-key" ? { actionLabel: "Set API key", onAction: openKeyDialog } : {}),
+      });
+    }
+  });
+  groups.forEach(g => {
+    if (g.notified) return;
+    const s = groupStats(g);
+    if (s.active) return;
+    g.notified = true;
+    if (s.cancelled === s.total) return;
+    const parts = [`${plural(s.done, "playlist")} scraped`];
+    if (s.failed) parts.push(`${s.failed} failed`);
+    if (s.cancelled) parts.push(`${s.cancelled} cancelled`);
+    toast({
+      kind: s.failed && !s.done ? "error" : "success",
+      title: `${g.label}: ${plural(s.tracks, "track")} saved`,
+      message: parts.join(" · "),
+      actionLabel: s.done ? "Open library" : undefined,
+      onAction: () => { clearFilters("all"); goTo("library"); },
+    });
+  });
+}
+
+function onJobsChanged() {
+  renderActivity();
+  updateJobElements();
+  updateGroupBars();
+  updateGenreTiles();
+  renderImportJob();
+  notifyJobs();
+  $("#add-badge").hidden = !jobs.some(isActive);
+  if (jobs.some(isActive)) startTicker();
+}
+
+// --- rendering of job state -------------------------------------------------
+function librarySlotHtml(lib) {
+  const when = lib.last_scraped_at ? timeAgo(lib.last_scraped_at) : "";
+  return {
+    sig: `lib:${lib.track_count}:${when}`,
+    html: `<span class="js js-lib">${icon("check")}<span>In library · <strong>${plural(Number(lib.track_count) || 0, "track")}</strong>${when ? ` · ${escapeHtml(when)}` : ""}</span></span> <button type="button" class="link-btn" data-view-source="${escapeHtml(lib.source_url)}">View</button>`,
+  };
+}
+function jobSlotHtml(job, lib) {
+  if ((!job || job.status === "cancelled") && lib) return librarySlotHtml(lib);
+  if (!job) return { sig: "none", html: "" };
+  switch (job.status) {
+    case "queued": {
+      const ahead = queuedAhead(job);
+      return { sig: `${job.id}:q:${ahead}`, html: `<span class="js">${icon("clock")}<span>Queued${ahead ? ` · ${ahead} ahead` : ""}</span></span>` };
+    }
+    case "running":
+      return { sig: `${job.id}:r`, html: `<span class="js js-running"><span class="spinner" aria-hidden="true"></span><span data-stage-for="${job.id}">${escapeHtml(jobStage(job))}</span><span class="js-time" data-elapsed-for="${job.id}" aria-hidden="true">${fmtClock(Date.now() - job.startedAt)}</span></span>` };
+    case "waiting":
+      return { sig: `${job.id}:w:${job.attempts}`, html: `<span class="js js-waiting">${icon("clock")}<span>Rate limited · retry in <span data-countdown-for="${job.id}" class="tnum">${fmtClock(job.retryAt - Date.now())}</span></span></span>` };
+    case "done": {
+      const n = Number(job.result?.track_count) || 0;
+      return { sig: `${job.id}:d`, html: `<span class="js js-done">${icon("check")}<span><strong>${plural(n, "track")}</strong> saved</span></span> <button type="button" class="link-btn" data-view-source="${escapeHtml(job.result?.source_url || job.url)}">View</button>` };
+    }
+    case "error":
+      return { sig: `${job.id}:e`, html: `<span class="js js-error">${icon("alert")}<span>${escapeHtml(job.error?.title || "Failed")}</span></span><span class="js-err-msg">${escapeHtml(job.error?.message || "")}${job.error?.action === "set-key" ? ` <button type="button" class="link-btn" data-action="set-key">Set API key</button>` : ""}</span>` };
+    case "cancelled":
+      return { sig: `${job.id}:c`, html: `<span class="js">${icon("x")}<span>Cancelled</span></span>` };
+  }
+  return { sig: "?", html: "" };
+}
+function updateJobElements(root = document) {
+  $$("[data-job-url]", root).forEach(el => {
+    const job = latestJobFor(el.dataset.jobUrl);
+    const lib = libraryEntryFor(el.dataset.jobUrl);
+    const slot = $(".job-slot", el);
+    const { sig, html } = jobSlotHtml(job, lib);
+    if (slot && slot.dataset.sig !== sig) { slot.dataset.sig = sig; slot.innerHTML = html; }
+    el.dataset.state = job && job.status !== "cancelled" ? job.status : lib ? "library" : "idle";
+    const btn = $("[data-job-btn]", el);
+    if (!btn) return;
+    const name = el.dataset.jobName || "playlist";
+    const active = isActive(job);
+    const label = active ? "Cancel"
+      : job && job.status === "error" ? "Retry"
+      : (job && job.status === "done") || lib ? "Refresh"
+      : "Scrape";
+    const ic = active ? "x" : label === "Scrape" ? "download" : "refresh";
+    if (btn.dataset.key !== label) {
+      btn.dataset.key = label;
+      btn.innerHTML = `${icon(ic, "i-sm")}<span>${label}</span>`;
+      btn.classList.toggle("btn-secondary", !active);
+      btn.classList.toggle("btn-ghost", active);
+      btn.classList.toggle("is-cancel", active);
+      btn.setAttribute("aria-label", active ? `Cancel scraping ${name}` : `${label} ${name}`);
+    }
+  });
+}
+// Header activity strip
+const activityEl = $("#activity");
+let activitySig = "";
+function renderActivity() {
+  const cur = currentJob();
+  const queued = jobs.filter(j => j.status === "queued");
+  const active = jobs.filter(isActive);
+  if (!active.length) {
+    if (!activityEl.hidden) { activityEl.hidden = true; document.body.classList.remove("has-activity"); activitySig = ""; }
+    return;
+  }
+  activityEl.hidden = false;
+  document.body.classList.add("has-activity");
+  const g = cur && cur.group ? groups.get(cur.group) : null;
+  const gs = g ? groupStats(g) : null;
+  const sig = `${cur ? cur.id + cur.status + cur.attempts : "none"}:${queued.length}:${gs ? gs.finished + "/" + gs.total : ""}`;
+  if (sig === activitySig) return;
+  activitySig = sig;
+  activityEl.classList.toggle("is-waiting", Boolean(cur && cur.status === "waiting"));
+  const iconEl = $("#activity-icon");
+  const textEl = $("#activity-text");
+  const metaEl = $("#activity-meta");
+  const rest = queued.length ? ` · ${queued.length} queued` : "";
+  const groupTxt = gs ? ` <span class="muted">(${gs.finished + 1} of ${gs.total})</span>` : "";
+  if (cur && cur.status === "waiting") {
+    iconEl.innerHTML = icon("clock");
+    textEl.innerHTML = `Rate limited — retrying <strong>${escapeHtml(cur.name)}</strong> in <span data-countdown-for="${cur.id}" class="tnum">${fmtClock(cur.retryAt - Date.now())}</span>${groupTxt}`;
+    metaEl.textContent = rest.replace(/^ · /, "");
+  } else if (cur) {
+    iconEl.innerHTML = `<span class="spinner"></span>`;
+    textEl.innerHTML = `Scraping <strong>${escapeHtml(cur.name)}</strong>${groupTxt}<span class="activity-stage muted"> — <span data-stage-for="${cur.id}">${escapeHtml(jobStage(cur))}</span></span>`;
+    metaEl.innerHTML = `<span data-elapsed-for="${cur.id}">${fmtClock(Date.now() - cur.startedAt)}</span>${escapeHtml(rest)}`;
+  } else {
+    iconEl.innerHTML = `<span class="spinner"></span>`;
+    textEl.textContent = "Starting…";
+    metaEl.textContent = "";
+  }
+  const cancelBtn = $("#activity-cancel");
+  cancelBtn.textContent = active.length > 1 ? "Cancel all" : "Cancel";
+  cancelBtn.setAttribute("aria-label", active.length > 1 ? `Cancel all ${active.length} scrapes` : `Cancel scraping ${cur ? cur.name : ""}`);
+}
+$("#activity-cancel").addEventListener("click", cancelAll);
+
+function startTicker() {
+  if (tickTimer) return;
+  tickTimer = setInterval(tick, 500);
+}
+function tick() {
+  const now = Date.now();
+  $$("[data-elapsed-for]").forEach(el => {
+    const j = jobsById.get(Number(el.dataset.elapsedFor));
+    if (j && j.status === "running") el.textContent = fmtClock(now - j.startedAt);
+  });
+  $$("[data-countdown-for]").forEach(el => {
+    const j = jobsById.get(Number(el.dataset.countdownFor));
+    if (j && j.status === "waiting") el.textContent = fmtClock(Math.ceil((j.retryAt - now) / 1000) * 1000);
+  });
+  $$("[data-stage-for]").forEach(el => {
+    const j = jobsById.get(Number(el.dataset.stageFor));
+    if (j && j.status === "running") { const s = jobStage(j); if (el.textContent !== s) el.textContent = s; }
+  });
+  $$("[data-pct-for]").forEach(el => {
+    const j = jobsById.get(Number(el.dataset.pctFor));
+    if (j) el.style.transform = `scaleX(${j.status === "waiting" ? 0 : jobPct(j)})`;
+  });
+  if (browseState.active) {
+    const el = $("#browse-elapsed");
+    if (el) el.textContent = fmtClock(now - browseState.startedAt);
+    const st = $("#browse-stage");
+    const s = browseStage();
+    if (st && st.textContent !== s) st.textContent = s;
+  }
+  if (!jobs.some(isActive) && !browseState.active) { clearInterval(tickTimer); tickTimer = null; }
+}
+
+/* ==========================================================================
+   Discover: curated catalog
+   ========================================================================== */
+const catalog = { status: "idle", data: {}, selected: storageGet("apollo_genre") || "" };
+// What's already in the warehouse, keyed by normalised source URL (from /api/stats).
+let libraryIndex = new Map();
+function rebuildLibraryIndex() {
+  libraryIndex = new Map(((stats && stats.sources) || []).map(src => [normUrl(src.source_url), src]));
+}
+function libraryEntryFor(url) { return libraryIndex.get(normUrl(url)) || null; }
+function isInLibrary(url) {
+  const j = latestJobFor(url);
+  return Boolean(libraryEntryFor(url) || (j && j.status === "done"));
+}
+// Re-derive every "in library" badge/button after stats change.
+function refreshLibraryState() {
+  rebuildLibraryIndex();
+  updateJobElements();
+  updateGroupBars();
+  updateGenreTiles();
+}
+const catalogEl = $("#catalog");
+async function loadCatalog() {
+  const first = catalog.status !== "ready";
+  catalog.status = "loading";
+  if (first) renderCatalog();
+  try {
+    const res = await fetch(apiUrl("/api/playlists"));
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+    const data = await res.json();
+    catalog.data = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+    catalog.status = "ready";
+    knownNames.clear();
+    Object.values(catalog.data).forEach(list => (list || []).forEach(p => p && p.url && knownNames.set(normUrl(p.url), p.name)));
+    if (stats) { renderStats(false); renderFilters(); }
+    if (state.items.length) renderTable(state.items);
+  } catch (err) {
+    catalog.status = "error";
+    catalog.error = err.status ? explainError(err.status, {}) : explainError(0, {}, err);
+  }
+  renderCatalog();
+}
+function catalogGenres() {
+  return Object.keys(catalog.data).filter(g => Array.isArray(catalog.data[g]) && catalog.data[g].length);
+}
+function renderCatalog() {
+  if (catalog.status === "loading" || catalog.status === "idle") {
+    catalogEl.innerHTML = `<div class="genre-grid" aria-hidden="true">${Array.from({ length: 8 }, () => `<div class="genre-tile" style="cursor:default"><span class="skeleton" style="height:14px;width:70%"></span><span class="skeleton" style="height:10px;width:45%;margin-top:8px"></span></div>`).join("")}</div>
+      <div class="pl-grid" aria-hidden="true">${Array.from({ length: 4 }, () => `<div class="card pl-card"><div class="pl-top"><span class="skeleton" style="width:52px;height:52px;border-radius:12px"></span><div style="flex:1"><span class="skeleton" style="height:14px;width:75%"></span><span class="skeleton" style="height:10px;width:50%;margin-top:8px"></span></div></div><span class="skeleton" style="height:34px;width:96px;margin-left:auto;border-radius:8px"></span></div>`).join("")}</div>
+      <span class="visually-hidden" role="status">Loading catalog…</span>`;
+    return;
+  }
+  if (catalog.status === "error") {
+    catalogEl.innerHTML = `<div class="card state">
+      <div class="state-icon is-error">${icon("alert", "i-lg")}</div>
+      <h3>${escapeHtml(catalog.error.title)}</h3><p>${escapeHtml(catalog.error.message)}</p>
+      <div class="state-actions"><button type="button" class="btn btn-primary" data-action-catalog="reload">${icon("refresh")}Try again</button></div></div>`;
+    return;
+  }
+  const genres = catalogGenres();
+  if (!genres.length) {
+    catalogEl.innerHTML = `<div class="card state">
+      <div class="state-icon">${icon("compass", "i-lg")}</div>
+      <h3>No curated playlists yet</h3>
+      <p>The catalog comes from the server's <code>playlists.py</code>. Once it has entries they'll appear here as genres — meanwhile, add any playlist by link.</p>
+      <div class="state-actions">
+        <button type="button" class="btn btn-primary" data-goto="add">${icon("link")}Add by link</button>
+        <button type="button" class="btn btn-secondary" data-action-catalog="reload">${icon("refresh")}Check again</button>
+      </div></div>`;
+    return;
+  }
+  if (!genres.includes(catalog.selected)) catalog.selected = genres[0];
+  catalogEl.innerHTML = `
+    <div class="genre-grid" role="group" aria-label="Genres (arrow keys move between genres)">
+      ${genres.map(g => `<button type="button" class="genre-tile" data-cat-genre="${escapeHtml(g)}" title="${escapeHtml(g)}" aria-pressed="${g === catalog.selected}" tabindex="${g === catalog.selected ? 0 : -1}" style="--h:${hue(g)}">
+        <span class="genre-tile-name">${escapeHtml(g)}</span>
+        <span class="genre-tile-count"><span class="genre-tile-busy" hidden></span><span class="genre-tile-meta">${plural(catalog.data[g].length, "playlist")}</span></span>
+      </button>`).join("")}
+    </div>
+    <div id="genre-panel"></div>`;
+  renderGenrePanel(false);
+  updateGenreTiles();
+}
+function renderGenrePanel(focusHeading) {
+  const panel = $("#genre-panel");
+  if (!panel) return;
+  const g = catalog.selected;
+  const list = (catalog.data[g] || []).filter(p => p && p.url);
+  panel.className = "genre-panel";
+  panel.innerHTML = `
+    <div class="panel-head">
+      <div><h2 id="genre-heading" tabindex="-1">${escapeHtml(g)}</h2><p>${plural(list.length, "playlist")} · scraped one at a time</p></div>
+      <div class="group-bar" data-group-key="${escapeHtml("genre:" + g)}" data-group-label="${escapeHtml(g)}"></div>
+    </div>
+    <div class="pl-grid">
+      ${list.map((p, i) => {
+        const url = safeHttpUrl(p.url);
+        return `<article class="card pl-card" data-job-url="${escapeHtml(p.url)}" data-job-name="${escapeHtml(p.name)}" style="--i:${i}">
+          <div class="pl-top">
+            <div class="pl-art" style="--h:${hue(p.name)}" aria-hidden="true">${icon("wave")}</div>
+            <div class="pl-info">
+              <h3 class="pl-name">${escapeHtml(p.name)}</h3>
+              ${url ? `<a class="pl-host" href="${escapeHtml(url)}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(p.name)} on SoundCloud"><span>${escapeHtml(hostPath(url))}</span>${icon("external")}</a>` : ""}
+            </div>
+          </div>
+          ${p.note ? `<p class="pl-note">${icon("info")}<span>${escapeHtml(p.note)}</span></p>` : ""}
+          <div class="pl-foot">
+            <div class="job-slot"></div>
+            <button type="button" class="btn btn-secondary btn-sm job-btn" data-job-btn>${icon("download", "i-sm")}<span>Scrape</span></button>
+          </div>
+        </article>`;
+      }).join("")}
+    </div>`;
+  // Re-trigger the entrance animation on genre switch.
+  panel.style.animation = "none"; void panel.offsetWidth; panel.style.animation = "";
+  updateJobElements(panel);
+  updateGroupBars();
+  if (focusHeading) $("#genre-heading").focus({ preventScroll: true });
+}
+catalogEl.addEventListener("click", e => {
+  const tile = e.target.closest("[data-cat-genre]");
+  if (tile) {
+    catalog.selected = tile.dataset.catGenre;
+    storageSet("apollo_genre", catalog.selected);
+    $$("[data-cat-genre]", catalogEl).forEach(b => {
+      b.setAttribute("aria-pressed", String(b === tile));
+      b.tabIndex = b === tile ? 0 : -1;
+    });
+    const behavior = reducedMotion.matches ? "auto" : "smooth";
+    tile.scrollIntoView({ behavior, block: "nearest", inline: "nearest" });
+    renderGenrePanel(false);
+    // The panel changed — if its heading is below the fold, bring it (and
+    // the first cards) into view so the tap visibly did something.
+    const heading = $("#genre-heading");
+    if (heading && heading.getBoundingClientRect().top > window.innerHeight * 0.55) {
+      heading.scrollIntoView({ behavior, block: "start" });
+    }
+    return;
+  }
+  const r = e.target.closest("[data-action-catalog]");
+  if (r) loadCatalog();
+});
+$("#catalog-refresh").addEventListener("click", loadCatalog);
+// Roving tabindex: the genre grid is one tab stop; arrows/Home/End move focus.
+catalogEl.addEventListener("keydown", e => {
+  const tile = e.target.closest && e.target.closest("[data-cat-genre]");
+  if (!tile) return;
+  const tiles = $$("[data-cat-genre]", catalogEl);
+  const i = tiles.indexOf(tile);
+  const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: tiles.length - 1 }[e.key];
+  if (next === undefined) return;
+  e.preventDefault();
+  const target = tiles[(next + tiles.length) % tiles.length];
+  tiles.forEach(b => { b.tabIndex = b === target ? 0 : -1; });
+  target.focus();
+  target.scrollIntoView({ block: "nearest", inline: "nearest" });
+});
+
+function updateGenreTiles() {
+  $$("[data-cat-genre]", catalogEl).forEach(tile => {
+    const genre = tile.dataset.catGenre;
+    const gid = latestGroupByKey.get("genre:" + genre);
+    const g = gid && groups.get(gid);
+    const busy = Boolean(g && groupStats(g).active);
+    const dot = $(".genre-tile-busy", tile);
+    if (dot) dot.hidden = !busy;
+    const list = (catalog.data[genre] || []).filter(p => p && p.url);
+    const saved = list.filter(p => isInLibrary(p.url)).length;
+    const complete = saved > 0 && saved === list.length;
+    const meta = $(".genre-tile-meta", tile);
+    const html = complete ? `${icon("check")}All ${list.length} saved`
+      : saved ? `${saved} of ${list.length} saved`
+      : plural(list.length, "playlist");
+    if (meta && meta.dataset.html !== html) { meta.dataset.html = html; meta.innerHTML = html; }
+    tile.classList.toggle("is-complete", complete);
+  });
+}
+
+// Group ("scrape all") bars — used by catalog genres and discovered profiles.
+// mode: "all" (refresh everything), "new" (not in the library yet — the
+// default, so we don't re-scrape what's already there), "failed" (retry the
+// ones whose latest attempt errored).
+function groupItemsFor(key, mode = "all") {
+  let items = [];
+  if (key.startsWith("genre:")) {
+    items = (catalog.data[key.slice(6)] || []).filter(p => p && p.url).map(p => ({ url: p.url, name: p.name }));
+  } else if (key.startsWith("profile:")) {
+    items = (browseState.found || []).map(p => ({ url: p.url, name: p.name }));
+  }
+  const failedNow = it => { const j = latestJobFor(it.url); return Boolean(j && j.status === "error"); };
+  if (mode === "new") return items.filter(it => !isInLibrary(it.url) && !failedNow(it)); // failed ones get "Retry"
+  if (mode === "failed") return items.filter(failedNow);
+  return items;
+}
+function updateGroupBars() {
+  $$("[data-group-key]").forEach(bar => {
+    const key = bar.dataset.groupKey;
+    const label = bar.dataset.groupLabel || "playlists";
+    const gid = latestGroupByKey.get(key);
+    const g = gid && groups.get(gid);
+    const s = g ? groupStats(g) : null;
+    const items = groupItemsFor(key, "all");
+    const fresh = groupItemsFor(key, "new");
+    const failed = groupItemsFor(key, "failed");
+    let sig, html;
+    if (s && s.active) {
+      const cur = s.current;
+      sig = `a:${gid}:${s.total}:${s.finished}:${cur ? cur.id + cur.status : ""}`;
+      const curTxt = cur
+        ? (cur.status === "waiting"
+            ? `Rate limited · retry in <span data-countdown-for="${cur.id}" class="tnum">${fmtClock(cur.retryAt - Date.now())}</span>`
+            : `<strong>${escapeHtml(cur.name)}</strong>`)
+        : "Queued…";
+      html = `<div class="group-progress" role="group" aria-label="Scrape all progress">
+          <div class="group-progress-text"><span class="tnum">${s.finished + (cur ? 1 : 0)} of ${s.total}</span> · ${curTxt}</div>
+          <div class="meter" role="progressbar" aria-label="Playlists finished" aria-valuemin="0" aria-valuemax="${s.total}" aria-valuenow="${s.finished}"><span style="transform:scaleX(${s.total ? s.finished / s.total : 0})"></span></div>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-cancel-group="${gid}">${icon("x", "i-sm")}Cancel</button>`;
+    } else {
+      const summary = s && s.cancelled < s.total
+        ? `<span class="group-summary">${icon("check", "i-sm")} Last run: ${s.done}/${s.total} scraped${s.failed ? `, ${s.failed} failed` : ""} · ${plural(s.tracks, "track")}</span>`
+        : "";
+      const saved = items.filter(it => isInLibrary(it.url)).length;
+      sig = `i:${gid || ""}:${items.length}:${fresh.length}:${failed.length}:${s ? s.finished : ""}`;
+      const retryBtn = failed.length
+        ? `<button type="button" class="btn ${fresh.length ? "btn-secondary" : "btn-primary"}" data-scrape-all="failed">${icon("refresh")}Retry ${failed.length} failed</button>` : "";
+      const refreshBtn = saved
+        ? `<button type="button" class="btn ${fresh.length ? "btn-ghost" : "btn-secondary"}" data-scrape-all="all" aria-label="Refresh all ${items.length} playlists (re-scrape the ones already saved too)">${icon("refresh")}Refresh all ${items.length}</button>` : "";
+      const mainBtn = fresh.length
+        ? `<button type="button" class="btn btn-primary" data-scrape-all="new">${icon("stack")}${saved ? `Scrape ${fresh.length} new` : `Scrape all ${fresh.length}`}</button>`
+        : failed.length ? "" : `<span class="group-summary">${icon("check", "i-sm")} All ${items.length} in your library</span>`;
+      html = `${s && !s.active && s.cancelled < s.total ? summary : ""}${refreshBtn}${retryBtn}${mainBtn}`; // primary action last
+    }
+    if (bar.dataset.sig === sig) return;
+    const hadFocus = bar.contains(document.activeElement);
+    bar.dataset.sig = sig;
+    bar.innerHTML = html;
+    if (hadFocus) $("button", bar)?.focus({ preventScroll: true });
+  });
+}
+/* ==========================================================================
+   Add: scrape a link
+   ========================================================================== */
+const scrapeForm = document.getElementById("scrape-form");
+const scrapeUrlInput = document.getElementById("scrape-url");
+const scrapeStatus = document.getElementById("scrape-status");
+const scrapeJobEl = $("#scrape-job");
+let importJobId = null;
+let importSig = "";
+let importLocalError = null;
+
+scrapeForm.addEventListener("submit", e => {
+  e.preventDefault();
+  const { url, error } = normalizeScUrl(scrapeUrlInput.value);
+  if (error) {
+    scrapeUrlInput.setAttribute("aria-invalid", "true");
+    importLocalError = error;
+    importJobId = null;
+    importSig = "";
+    renderImportJob();
+    scrapeUrlInput.focus();
+    return;
+  }
+  scrapeUrlInput.removeAttribute("aria-invalid");
+  importLocalError = null;
+  scrapeUrlInput.value = url;
+  const job = enqueue(url, { name: sourceLabel(url) });
+  importJobId = job.id;
+  importSig = "";
+  renderImportJob();
+});
+scrapeUrlInput.addEventListener("input", () => scrapeUrlInput.removeAttribute("aria-invalid"));
+
+function renderImportJob() {
+  if (importLocalError) {
+    const sig = "local:" + importLocalError.title;
+    if (sig === importSig) return;
+    importSig = sig;
+    scrapeJobEl.innerHTML = errorCallout(importLocalError);
+    scrapeStatus.textContent = `${importLocalError.title}. ${importLocalError.message}`;
+    return;
+  }
+  const job = importJobId && jobsById.get(importJobId);
+  if (!job) { if (importSig) { scrapeJobEl.innerHTML = ""; importSig = ""; } return; }
+  const ahead = job.status === "queued" ? queuedAhead(job) : 0;
+  const sig = `${job.id}:${job.status}:${job.attempts}:${ahead}`;
+  if (sig === importSig) return;
+  importSig = sig;
+  const hadFocus = scrapeJobEl.contains(document.activeElement);
+  const cancel = `<button type="button" class="btn btn-ghost btn-sm" data-cancel-job="${job.id}">${icon("x", "i-sm")}Cancel</button>`;
+  let html = "", status = "";
+  if (job.status === "queued") {
+    html = `<div class="progress-block"><div class="progress-top">${icon("clock")}<div class="progress-stage">Queued${ahead ? ` behind ${plural(ahead, "other scrape")}` : ""}<small>${escapeHtml(job.url)}</small></div>${cancel}</div></div>`;
+    status = ahead ? `Queued behind ${ahead} other scrapes.` : "Queued.";
+  } else if (job.status === "running") {
+    html = `<div class="progress-block">
+      <div class="progress-top"><span class="spinner" aria-hidden="true"></span>
+        <div class="progress-stage"><span data-stage-for="${job.id}">${escapeHtml(jobStage(job))}</span><small>${escapeHtml(job.url)}</small></div>
+        <span class="progress-time" data-elapsed-for="${job.id}" aria-hidden="true">${fmtClock(Date.now() - job.startedAt)}</span></div>
+      <div class="meter" aria-hidden="true"><span data-pct-for="${job.id}" style="transform:scaleX(${jobPct(job)})"></span></div>
+      <div class="progress-foot"><span>Usually 10–60 seconds — you can keep browsing.</span>${cancel}</div></div>`;
+    status = "Scraping — this usually takes 10 to 60 seconds.";
+  } else if (job.status === "waiting") {
+    html = `<div class="progress-block"><div class="progress-top">${icon("clock")}
+      <div class="progress-stage">Rate limit reached — retrying automatically<small>The server allows 10 scrapes per minute.</small></div>
+      <span class="progress-time tnum" data-countdown-for="${job.id}" aria-hidden="true">${fmtClock(job.retryAt - Date.now())}</span></div>
+      <div class="progress-foot"><span>Attempt ${job.attempts + 1} of ${MAX_ATTEMPTS}</span>${cancel}</div></div>`;
+    status = `Rate limited — retrying automatically in ${Math.ceil((job.retryAt - Date.now()) / 1000)} seconds.`;
+  } else if (job.status === "done") {
+    const n = Number(job.result?.track_count) || 0;
+    html = calloutHtml("success", `${plural(n, "track")} saved`, n === 0 ? "The page loaded but no tracks were found — it may be empty, or SoundCloud's layout changed." : `From ${job.name}.`, {
+      actionsHtml: `<button type="button" class="btn btn-secondary btn-sm" data-view-source="${escapeHtml(job.result?.source_url || job.url)}">${icon("library", "i-sm")}View in library</button>`,
+      detail: job.result?.lake_object_key ? `Lake object: ${job.result.lake_object_key}` : "",
+    });
+    status = `Scraped ${n} tracks.`;
+    if (normUrl(scrapeUrlInput.value) === normUrl(job.url)) scrapeUrlInput.value = "";
+  } else if (job.status === "error") {
+    html = errorCallout(job.error);
+    status = `${job.error.title}. ${job.error.message}`;
+  } else if (job.status === "cancelled") {
+    html = calloutHtml("info", "Scrape cancelled", job.cancelledWhile === "running" ? "It was already running on the server, so its tracks may still show up in your library." : "Nothing was sent to SoundCloud.");
+    status = "Scrape cancelled.";
+  }
+  scrapeJobEl.innerHTML = html;
+  scrapeStatus.textContent = status;
+  if (hadFocus) ($("button", scrapeJobEl) || scrapeUrlInput).focus({ preventScroll: true });
+}
+/* ==========================================================================
+   Add: browse a profile's playlists
+   ========================================================================== */
+const browseForm = document.getElementById("browse-form");
+const browseUrlInput = document.getElementById("browse-url");
+const browseBtn = document.getElementById("browse-btn");
+const browseStatus = document.getElementById("browse-status");
+const browseProgress = $("#browse-progress");
+const browseResults = document.getElementById("browse-results");
+const browseState = { active: false, startedAt: 0, controller: null, found: [], profile: "" };
+function browseStage() {
+  const el = Date.now() - browseState.startedAt;
+  if (el < 3000) return "Opening the profile…";
+  if (el < 9000) return "Reading its playlist index…";
+  if (el < 25000) return "Collecting playlists…";
+  return "Still working — big profiles take longer…";
+}
 
 browseForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const profileUrl = browseUrlInput.value.trim();
-  if (!profileUrl) return;
+  const { url: profileUrl, error } = normalizeScUrl(browseUrlInput.value);
+  if (error) {
+    browseUrlInput.setAttribute("aria-invalid", "true");
+    browseProgress.innerHTML = "";
+    browseResults.innerHTML = errorCallout(error);
+    browseStatus.textContent = `${error.title}. ${error.message}`;
+    browseUrlInput.focus();
+    return;
+  }
+  browseUrlInput.removeAttribute("aria-invalid");
+  browseUrlInput.value = profileUrl;
 
+  browseState.controller?.abort();
+  browseState.controller = new AbortController();
+  browseState.active = true;
+  browseState.startedAt = Date.now();
   browseBtn.disabled = true;
-  browseStatus.className = "status";
-  browseStatus.innerHTML = `<span class="spinner"></span>Browsing — reading that profile's playlist index…`;
+  browseStatus.textContent = "Browsing — reading that profile's playlist index…";
   browseResults.innerHTML = "";
+  browseProgress.innerHTML = `<div class="progress-block">
+    <div class="progress-top"><span class="spinner" aria-hidden="true"></span>
+      <div class="progress-stage"><span id="browse-stage">${browseStage()}</span><small>${escapeHtml(profileUrl)}</small></div>
+      <span class="progress-time" id="browse-elapsed" aria-hidden="true">0:00</span></div>
+    <div class="progress-foot"><span>Nothing is saved yet — you'll pick what to scrape.</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="browse-cancel">${icon("x", "i-sm")}Cancel</button></div></div>`;
+  $("#browse-cancel").addEventListener("click", () => browseState.controller.abort());
+  startTicker();
 
   try {
-    const res = await fetch(apiUrl("/api/discover-playlists"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ profile_url: profileUrl })
-    });
-    let body;
+    let res;
     try {
-      body = await res.json();
-    } catch {
-      // Non-JSON error body (e.g. a proxy/nginx error page instead of the
-      // API's own JSON) — fall back to a plain status-code message below
-      // instead of surfacing a raw "Unexpected token" parse error.
-      body = {};
+      res = await fetch(apiUrl("/api/discover-playlists"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ profile_url: profileUrl }),
+        signal: browseState.controller.signal,
+      });
+    } catch (err) {
+      if (err.name === "AbortError") {
+        browseStatus.textContent = "Browse cancelled.";
+        browseResults.innerHTML = calloutHtml("info", "Browse cancelled", "");
+        return;
+      }
+      throw Object.assign(new Error(), { explained: explainError(0, {}, err) });
     }
+    const body = await readBody(res);
+    if (!res.ok) throw Object.assign(new Error(), { explained: explainError(res.status, body) });
 
-    if (res.status === 401) {
-      throw new Error(`${body.detail || "API key required"} — set one via the 🔑 API key button above.`);
-    }
-    if (!res.ok) {
-      throw new Error(body.detail || `HTTP ${res.status}`);
-    }
-
-    if (body.playlists.length === 0) {
-      browseStatus.className = "status";
+    const list = (Array.isArray(body.playlists) ? body.playlists : []).filter(p => p && p.url);
+    browseState.found = list;
+    browseState.profile = profileUrl;
+    list.forEach(p => knownNames.set(normUrl(p.url), p.name));
+    if (list.length === 0) {
       browseStatus.textContent = "No playlists found on that profile's /sets page.";
+      browseResults.innerHTML = calloutHtml("info", "No playlists found", "That profile's /sets page is empty. You can still scrape the profile itself to collect its own uploads.", {
+        actionsHtml: `<button type="button" class="btn btn-secondary btn-sm" data-scrape-profile="${escapeHtml(profileUrl)}">${icon("download", "i-sm")}Scrape the profile</button>`,
+      });
       return;
     }
-
-    browseStatus.className = "status ok";
-    browseStatus.textContent = `Found ${body.playlists.length} playlist(s). Pick one to load it into the scrape box above.`;
-
-    const items = body.playlists.map(p => `
-      <li>
-        <span>${escapeHtml(p.name)}</span>
-        <button type="button" class="load-playlist-btn" data-url="${escapeHtml(p.url)}">Load</button>
-      </li>
-    `).join("");
-    browseResults.innerHTML = `<ul class="browse-list">${items}</ul>`;
-
-    browseResults.querySelectorAll(".load-playlist-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        scrapeUrlInput.value = btn.dataset.url;
-        scrapeUrlInput.scrollIntoView({ behavior: "smooth", block: "center" });
-        scrapeStatus.className = "status";
-        scrapeStatus.textContent = "URL loaded — click Scrape when ready.";
-      });
-    });
+    const user = sourceParts(profileUrl).name;
+    browseStatus.textContent = `Found ${list.length} playlist(s). Scrape the ones you want.`;
+    browseResults.innerHTML = `
+      <div class="found-head">
+        <h3>${plural(list.length, "playlist")} on ${escapeHtml(user)}</h3>
+        <div class="group-bar" data-group-key="${escapeHtml("profile:" + profileUrl)}" data-group-label="${escapeHtml(user)}"></div>
+      </div>
+      <ul class="found-list" role="list" style="margin-top:12px">
+        ${list.map((p, i) => {
+          const u = safeHttpUrl(p.url);
+          return `<li class="found-item" data-job-url="${escapeHtml(p.url)}" data-job-name="${escapeHtml(p.name)}" style="--i:${Math.min(i, 12)}">
+            <div class="pl-art" style="--h:${hue(p.name)}" aria-hidden="true">${icon("wave")}</div>
+            <div class="found-body">
+              <div class="found-name">${u ? `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="color:inherit">${escapeHtml(p.name)}</a>` : escapeHtml(p.name)}</div>
+              <div class="job-slot"></div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm job-btn" data-job-btn>${icon("download", "i-sm")}<span>Scrape</span></button>
+          </li>`;
+        }).join("")}
+      </ul>`;
+    updateJobElements(browseResults);
+    updateGroupBars();
   } catch (err) {
-    browseStatus.className = "status error";
-    browseStatus.textContent = err.message;
+    const ex = err.explained || explainError(0, {}, err);
+    browseStatus.textContent = `${ex.title}. ${ex.message}`;
+    browseResults.innerHTML = errorCallout(ex);
   } finally {
+    browseState.active = false;
     browseBtn.disabled = false;
+    browseProgress.innerHTML = "";
   }
 });
+browseUrlInput.addEventListener("input", () => browseUrlInput.removeAttribute("aria-invalid"));
+// Leaving mid-scrape loses the client-side queue (server work continues).
+window.addEventListener("beforeunload", e => {
+  if (jobs.some(j => j.status === "queued" || j.status === "waiting")) { e.preventDefault(); e.returnValue = ""; }
+});
 
-scrapeForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const url = scrapeUrlInput.value.trim();
-  if (!url) return;
-
-  scrapeBtn.disabled = true;
-  scrapeStatus.className = "status";
-  scrapeStatus.innerHTML = `<span class="spinner"></span>Scraping — this can take up to a minute…`;
-
+/* ==========================================================================
+   Paste (touch devices, where long-press → Paste is fiddly)
+   ========================================================================== */
+const canPaste = Boolean(navigator.clipboard && navigator.clipboard.readText) &&
+  matchMedia("(hover: none), (pointer: coarse)").matches;
+if (canPaste) $$("[data-paste]").forEach(b => { b.hidden = false; b.parentElement.classList.add("has-paste"); });
+async function pasteInto(input) {
   try {
-    const res = await fetch(apiUrl("/scrape"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ url })
-    });
-    let body;
-    try {
-      body = await res.json();
-    } catch {
-      body = {};
-    }
+    const text = (await navigator.clipboard.readText() || "").trim();
+    if (!text) { toast({ kind: "info", title: "Clipboard is empty", message: "Copy a SoundCloud link first." }); return; }
+    input.value = text;
+    input.removeAttribute("aria-invalid");
+    input.focus();
+  } catch {
+    toast({ kind: "info", title: "Couldn't read the clipboard", message: "Long-press the field and choose Paste instead." });
+  }
+}
 
-    if (res.status === 401) {
-      throw new Error(`${body.detail || "API key required"} — set one via the 🔑 API key button above.`);
-    }
-    if (!res.ok) {
-      throw new Error(body.detail || `HTTP ${res.status}`);
-    }
-
-    scrapeStatus.className = "status ok";
-    scrapeStatus.textContent = `Scraped ${body.track_count} tracks → ${body.lake_object_key}`;
-    state.offset = 0;
-    await loadTracks();
-  } catch (err) {
-    scrapeStatus.className = "status error";
-    scrapeStatus.textContent = err.message;
-  } finally {
-    scrapeBtn.disabled = false;
+/* ==========================================================================
+   One delegated click handler for everything rendered dynamically
+   ========================================================================== */
+document.addEventListener("click", e => {
+  const t = e.target;
+  const hit = sel => t.closest(sel);
+  let el;
+  if ((el = hit("[data-job-btn]"))) {
+    const host = el.closest("[data-job-url]");
+    const job = latestJobFor(host.dataset.jobUrl);
+    if (isActive(job)) cancelJob(job);
+    else enqueue(host.dataset.jobUrl, { name: host.dataset.jobName });
+  } else if ((el = hit("[data-scrape-all]"))) {
+    const bar = el.closest("[data-group-key]");
+    const items = groupItemsFor(bar.dataset.groupKey, el.dataset.scrapeAll || "all");
+    if (items.length) startGroup(bar.dataset.groupKey, bar.dataset.groupLabel || "Playlists", items);
+  } else if ((el = hit("[data-cancel-group]"))) {
+    cancelGroup(el.dataset.cancelGroup);
+  } else if ((el = hit("[data-cancel-job]"))) {
+    const j = jobsById.get(Number(el.dataset.cancelJob));
+    if (j) cancelJob(j);
+  } else if ((el = hit("[data-view-source]"))) {
+    viewSource(el.dataset.viewSource);
+  } else if ((el = hit("[data-action]"))) {
+    if (el.dataset.action === "set-key") openKeyDialog();
+    if (el.dataset.action === "retry-tracks") { state.loaded = false; loadTracks(); }
+  } else if ((el = hit("[data-goto]"))) {
+    goTo(el.dataset.goto);
+  } else if ((el = hit("[data-clear]")) && tableWrap.contains(el)) {
+    clearFilters(el.dataset.clear);
+    searchInput.focus();
+  } else if ((el = hit("[data-fill]"))) {
+    const inp = document.getElementById(el.dataset.target);
+    inp.value = el.dataset.fill; inp.focus(); inp.removeAttribute("aria-invalid");
+  } else if ((el = hit("[data-paste]"))) {
+    pasteInto(document.getElementById(el.dataset.paste));
+  } else if ((el = hit("[data-scrape-profile]"))) {
+    scrapeUrlInput.value = el.dataset.scrapeProfile;
+    const job = enqueue(el.dataset.scrapeProfile, { name: sourceLabel(el.dataset.scrapeProfile) });
+    importJobId = job.id; importSig = ""; importLocalError = null;
+    renderImportJob();
+    scrapeUrlInput.scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "center" });
   }
 });
 
+/* ==========================================================================
+   Boot
+   ========================================================================== */
 loadCatalog();
+showView(viewFromHash());
 loadTracks();
+loadStats();
 </script>
 
 </body>

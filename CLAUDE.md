@@ -122,17 +122,44 @@ already-compressed files instead of re-wrapping them.
 **Front end** (`scraper/app/static/index.html`): single file, no build step,
 no framework. Served by the separate `frontend/` nginx image, **not** mounted
 on the FastAPI app — `main.py` is a pure JSON API now (CORS via
-`APOLLO_CORS_ORIGINS`, no `StaticFiles`). The page reads the API's address
-from `window.APOLLO_API_BASE`, set at container start by
-`frontend/40-apollo-config.sh` from the `API_BASE_URL` env var — empty means
-"same origin," which only the old combined setup relied on. `POST /scrape`
-and `POST /api/discover-playlists` go through `require_api_key` (`main.py`),
-a no-op unless `APOLLO_API_KEY` is set — see `docs/HOSTING.md` for why this
-is a deterrent, not real auth.
+`APOLLO_CORS_ORIGINS`, no `StaticFiles`). `frontend/40-apollo-config.sh`
+writes `config.js` at container start with `APOLLO_API_BASE` (explicit
+override, normally empty) and `APOLLO_API_PORT`. With no override, the page
+calls the API at *its own* `location.hostname` on that port. That's
+deliberate: the same deployment is reached via LAN IP, Tailscale IP or
+localhost, and a single baked-in address only works for one of them (this
+was a real bug). `POST /scrape` and `POST /api/discover-playlists` go through
+`require_api_key` (`main.py`), a no-op unless `APOLLO_API_KEY` is set — see
+`docs/HOSTING.md` for why this is a deterrent, not real auth.
 
-**Playlist catalog** (`playlists.py`): ships with an empty `CATALOG` dict by
-design — no third-party or personal SoundCloud accounts are baked into this
-repo. It's read fresh on every `GET /api/playlists` call.
+The UI has three hash-routed views: Library (reads `GET /api/stats` for
+headline numbers and genre/source facets, and `GET /api/tracks` with
+`genre`/`source_url`/`sort` filters), Discover (the catalog) and Add (scrape by
+URL, browse a profile). Every scrape goes through one in-page queue, one at a
+time, which waits and retries on 429. The docked player's play/pause state
+comes from the SoundCloud widget's own postMessage events rather than being
+assumed. On iOS, autoplay in the iframe is blocked, so the player shows
+"Press ▶" instead of pretending to play. There's still no auto-advance:
+playback is one track per explicit tap, by policy.
+
+**Playlist catalog** (`playlists.py`): a curated, verified list of public
+SoundCloud playlists across ~19 genres, mostly from SoundCloud's own editorial
+accounts (populated 2026-09-25 at the owner's request — it used to ship
+empty). Every entry was checked with the real `fetch_html`/`parse_html`, and
+the comment block in the file shows how to re-verify. SoundCloud playlists do
+vanish or change, so re-verify before trusting it long-term.
+`tests/test_playlists.py` guards its shape: soundcloud.com only, no
+duplicates, profiles carry a `note`. It's read fresh on every
+`GET /api/playlists` call.
+
+**Warehouse queries** (`warehouse.py`): the `sort` values map through a
+whitelist to fixed SQL, and are never interpolated. `search` is a literal
+substring match (`escape_like` + `ESCAPE '\'`), so `%`/`_` aren't wildcards.
+NUL bytes in query params are rejected with 422, because Postgres would
+otherwise 500. `/api/stats` groups genres by `lower(btrim(genre))` and leaves
+out blanks and `#`-hashtag spam. Every genre it returns must round-trip as
+`/api/tracks?genre=` with the same count. `tests/test_warehouse_integration.py`
+checks this read-only against a real DB, and skips when none is reachable.
 
 **`docker-compose.yml`**: `COMPOSE_PROJECT_NAME` is pinned in `.env`. If this
 project's directory ever gets renamed or moved, keep that pin — otherwise
