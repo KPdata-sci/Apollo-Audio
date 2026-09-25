@@ -212,6 +212,24 @@ gated writes" call — this is the lightweight version of that.
   against both images periodically — the Playwright base image in particular
   is large and updates often.
 
+## Scheduled ingest (CronJob)
+
+`infra/terraform-k8s/ingest-cronjob.tf` runs `scraper/app/ingest.py` on a
+timer (daily by default — `ingest_schedule`), re-scraping a fixed list of
+URLs (`ingest_urls`, comma-separated) through the same pipeline as
+`POST /scrape`. It's the same `api` image with a different container command,
+so there's nothing extra to build. Test it immediately after `apply` rather
+than waiting for the schedule:
+```bash
+kubectl create job -n apollo ingest-manual-test --from=cronjob/ingest
+kubectl logs -n apollo -l job-name=ingest-manual-test -f
+```
+`concurrency_policy = "Forbid"` means a slow run blocks the next scheduled
+one rather than overlapping — consistent with the one-Playwright-at-a-time
+reasoning behind the `api` Deployment's `replicas = 1`. See
+`docs/CRAWLER_DESIGN.md` for why this is a fixed-list scheduled re-scrape and
+not a general crawler.
+
 ## If this ever needs to be genuinely public
 
 Don't build this preemptively — it's real ongoing surface area (TLS renewal,

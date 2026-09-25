@@ -36,6 +36,13 @@ postgres_password = "change-me"
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
 api_key = "change-me"
 
+# Scheduled ingest (scraper/app/ingest.py) — comma-separated soundcloud.com
+# playlist/profile URLs, scraped automatically on ingest_schedule (default:
+# once a day). Empty by default, same "no accounts baked in" rule as the UI
+# catalog — add your own.
+# ingest_urls     = "https://soundcloud.com/<artist>/sets/<playlist>,https://soundcloud.com/<profile>"
+# ingest_schedule = "0 3 * * *"
+
 # --- Docker Desktop alternative (same Windows PC, no separate VM) ---
 # kubeconfig_path = "~/.kube/config"
 # scraper_image   = "apolloaudio-api:local"       # docker build -t apolloaudio-api:local ./scraper

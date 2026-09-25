@@ -107,6 +107,16 @@ to scrape. No index table needed — it's synchronous and stateless.
 - **Reposts tabs** (`/<user>/reposts`) as a discovery source — plausible,
   points at other artists' content, not tested.
 - **Charts** — blocked on finding the current URL scheme.
-- Any of this running on a schedule (cron) unattended — every phase above
-  still assumes a person is choosing when to run discovery and when to scrape,
-  consistent with how the rest of this app works.
+- **Discovery/crawling running on a schedule unattended** — every phase above
+  still assumes a person is choosing when to run *discovery* (finding new
+  URLs to consider) and when to scrape, for the ToS/courtesy reasons in
+  Phase 3 above. This is distinct from what's actually built in
+  `scraper/app/ingest.py`: a scheduled **re-scrape of a small, fixed, hand-
+  chosen list of URLs** (`APOLLO_INGEST_URLS`), not a crawler that discovers
+  new URLs on its own — there's no recursion, no growing frontier, and the
+  target set only changes when a person edits the config. It's a much
+  narrower courtesy footprint than the crawler this doc scopes, but it's
+  still unattended scheduled traffic to SoundCloud, so keep the URL list
+  short and the schedule infrequent (see `ingest_schedule` in
+  `infra/terraform-k8s/variables.tf`, daily by default) rather than treating
+  it as a green light for the crawler design above.

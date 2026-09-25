@@ -32,6 +32,18 @@ variable "cors_origins" {
   default     = "*"
 }
 
+variable "ingest_urls" {
+  description = "Comma-separated soundcloud.com playlist/profile URLs the scheduled ingest CronJob scrapes automatically (scraper/app/ingest.py). Empty (default) means the CronJob runs and does nothing — same \"no accounts baked into this repo\" rule as the UI catalog in playlists.py."
+  type        = string
+  default     = ""
+}
+
+variable "ingest_schedule" {
+  description = "Standard cron expression for how often the ingest CronJob runs. Default is once a day at 03:00 — SoundCloud scraping is DOM-based (no public API), so keep this infrequent rather than treating it like a real-time feed."
+  type        = string
+  default     = "0 3 * * *"
+}
+
 variable "postgres_user" {
   type    = string
   default = "apollo"

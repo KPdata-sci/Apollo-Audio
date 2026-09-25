@@ -52,6 +52,11 @@ services:
       # Only matters once the frontend container below is on a different
       # origin than this one.
       APOLLO_CORS_ORIGINS: ${APOLLO_CORS_ORIGINS:-*}
+      # Comma-separated soundcloud.com URLs for scheduled ingest (see
+      # scraper/app/ingest.py). Not run automatically here — trigger it with
+      # `docker compose run --rm api python -m app.ingest`; in Kubernetes this
+      # runs on a schedule via infra/terraform-k8s/ingest-cronjob.tf.
+      APOLLO_INGEST_URLS: ${APOLLO_INGEST_URLS:-}
     volumes:
       - ./data/lake:/data/lake
       - ./logs:/var/log/apollo

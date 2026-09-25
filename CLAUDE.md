@@ -55,6 +55,19 @@ timestamped JSON (durable, replayable record) → `warehouse.load_tracks()`
 upserts into Postgres `tracks`, deduped on track `url` (not `artist`+`title`+`url`
 — artist attribution can legitimately improve between scrapes, so it must not
 be part of the conflict key or re-scrapes create duplicates instead of updating).
+This exact sequence lives in `pipeline.py::scrape_and_store()`, shared by the
+HTTP endpoint and `ingest.py` (see below) — don't duplicate it in a third
+place if you add another entry point.
+
+**Scheduled ingest** (`ingest.py`): re-runs `scrape_and_store()` against a
+fixed, hand-configured URL list (`APOLLO_INGEST_URLS`) instead of one ad-hoc
+request — for keeping a small set of playlists fresh without opening the UI.
+Deliberately **not** a crawler (no discovery, no recursion, the URL list only
+changes when a person edits it) — see `docs/CRAWLER_DESIGN.md`'s closing
+section for why that distinction matters for SoundCloud ToS/courtesy. Runs
+via `docker compose run --rm api python -m app.ingest` locally, or a
+Kubernetes `CronJob` (`infra/terraform-k8s/ingest-cronjob.tf`) on a schedule.
+One bad URL logs and moves on rather than aborting the batch.
 
 **The non-obvious core of `scraping.py`**: SoundCloud's SSR payload
 (`window.__sc_hydration`, read from the static HTML) only fully hydrates the

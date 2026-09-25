@@ -2,8 +2,6 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,34 +19,24 @@ from .models import (
     ScrapeResult,
     TracksPage,
 )
-from .scraping import discover_playlists, fetch_html, parse_html
+from .pipeline import (
+    DisallowedHostError,
+    FetchError,
+    LakeWriteError,
+    LoginRequiredError,
+    is_allowed_host,
+    scrape_and_store,
+)
+from .scraping import discover_playlists
 from .settings import settings
 
 configure_logging()
 logger = logging.getLogger("apollo.main")
 
-# Text SoundCloud's own error page uses when a playlist/profile requires being
-# logged in as its owner — used to turn a silent "0 tracks" into a clear error.
-_LOGIN_REQUIRED_MARKER = "may have to log in to view this playlist"
-
-# This API drives a real headless browser to whatever URL it's given —
-# without this check, POST /scrape / /api/discover-playlists is an open SSRF
-# primitive (internal network probing, cloud metadata endpoints, etc.),
-# especially once reachable outside localhost.
-_ALLOWED_HOSTS = {"soundcloud.com"}
-
-
-def _is_allowed_host(url: str) -> bool:
-    host = (urlsplit(url).hostname or "").lower()
-    return host in _ALLOWED_HOSTS or host.endswith(".soundcloud.com")
-
 
 def _require_soundcloud_host(url: str) -> None:
-    if not _is_allowed_host(url):
-        raise HTTPException(
-            status_code=422,
-            detail="Only soundcloud.com URLs are allowed.",
-        )
+    if not is_allowed_host(url):
+        raise HTTPException(status_code=422, detail="Only soundcloud.com URLs are allowed.")
 
 
 @asynccontextmanager
@@ -157,28 +145,11 @@ async def scrape(request: Request, payload: ScrapeRequest) -> ScrapeResult:
     is configured — see .env.example.
     """
     url = str(payload.url)
-    _require_soundcloud_host(url)
-    logger.info("Scrape requested for %s", url)
-
-    fetch_start = time.monotonic()
     try:
-        html, hydration = await fetch_html(url)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the caller as a 502
-        logger.exception("Failed to fetch %s", url)
-        raise HTTPException(status_code=502, detail=f"Failed to fetch page: {exc}") from exc
-    fetch_ms = (time.monotonic() - fetch_start) * 1000
-    logger.debug(
-        "Fetched %s in %.0fms (%d bytes html, hydration=%s)",
-        url, fetch_ms, len(html), "present" if hydration else "absent",
-    )
-
-    parse_start = time.monotonic()
-    tracks = parse_html(html, hydration, source_url=url)
-    parse_ms = (time.monotonic() - parse_start) * 1000
-    logger.debug("Parsed %d tracks from %s in %.1fms", len(tracks), url, parse_ms)
-
-    if not tracks and _LOGIN_REQUIRED_MARKER in html:
-        logger.warning("Scrape of %s blocked by a login wall", url)
+        result = await scrape_and_store(url)
+    except DisallowedHostError as exc:
+        raise HTTPException(status_code=422, detail="Only soundcloud.com URLs are allowed.") from exc
+    except LoginRequiredError as exc:
         raise HTTPException(
             status_code=422,
             detail=(
@@ -186,39 +157,15 @@ async def scrape(request: Request, payload: ScrapeRequest) -> ScrapeResult:
                 "Set APOLLO_SOUNDCLOUD_COOKIES in your .env to your own session "
                 "cookies to try scraping it (see .env.example)."
             ),
-        )
-
-    scraped_at = datetime.now(timezone.utc)
-
-    # 1. Land the raw scrape in the data lake first — this is the durable,
-    #    replayable record, independent of whatever the warehouse schema looks like today.
-    lake_start = time.monotonic()
-    try:
-        lake_key = lake.put_raw_scrape(url, tracks, scraped_at=scraped_at)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the caller as a 502
+        ) from exc
+    except FetchError as exc:
+        logger.exception("Failed to fetch %s", url)
+        raise HTTPException(status_code=502, detail=f"Failed to fetch page: {exc}") from exc
+    except LakeWriteError as exc:
         logger.exception("Failed to write raw scrape to the lake for %s", url)
         raise HTTPException(status_code=502, detail="Failed to write scrape result to the data lake") from exc
-    lake_ms = (time.monotonic() - lake_start) * 1000
 
-    # 2. Load the parsed rows into the warehouse for querying.
-    warehouse_start = time.monotonic()
-    warehouse.load_tracks(tracks, source_url=url, lake_object_key=lake_key, scraped_at=scraped_at)
-    warehouse_ms = (time.monotonic() - warehouse_start) * 1000
-
-    total_ms = fetch_ms + parse_ms + lake_ms + warehouse_ms
-    logger.info(
-        "Scraped %d tracks from %s in %.0fms total "
-        "(fetch=%.0fms parse=%.1fms lake=%.1fms warehouse=%.1fms) -> %s",
-        len(tracks), url, total_ms, fetch_ms, parse_ms, lake_ms, warehouse_ms, lake_key,
-    )
-
-    return ScrapeResult(
-        source_url=url,
-        scraped_at=scraped_at,
-        track_count=len(tracks),
-        lake_object_key=lake_key,
-        tracks=tracks,
-    )
+    return ScrapeResult(**result)
 
 
 @app.get(

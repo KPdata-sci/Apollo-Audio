@@ -127,6 +127,26 @@ page like that, set `APOLLO_SOUNDCLOUD_COOKIES` to your own session cookie (see
 `.env.example` for how to get it from your own browser). This path is
 untested — no SoundCloud account was available while building it.
 
+### Scheduled ingest
+
+Beyond the on-demand `POST /scrape`, `scraper/app/ingest.py` re-runs the same
+fetch → parse → lake → warehouse pipeline against a fixed list of URLs —
+useful for keeping a small set of playlists you care about up to date without
+opening the UI. Empty/off by default (same "no accounts baked into this repo"
+rule as the catalog); set `APOLLO_INGEST_URLS` (comma-separated soundcloud.com
+URLs) to use it:
+
+```bash
+docker compose run --rm api python -m app.ingest
+```
+
+In Kubernetes this runs on a timer via a `CronJob`
+(`infra/terraform-k8s/ingest-cronjob.tf`, `ingest_urls`/`ingest_schedule`
+Terraform variables — daily by default). One bad/blocked URL in the list
+doesn't stop the others from being ingested. See
+[docs/CRAWLER_DESIGN.md](docs/CRAWLER_DESIGN.md) for why this is a fixed-list
+re-scrape rather than a crawler that discovers new URLs on its own.
+
 ### Full API reference
 
 See [docs/API.md](docs/API.md) for every endpoint, or the live interactive
@@ -171,6 +191,8 @@ pytest
 ## Repository layout
 
 - `scraper/` — the FastAPI + Playwright app (the standalone API, no UI mounted)
+  - `app/pipeline.py` — the fetch → parse → lake → warehouse sequence shared by `POST /scrape` and `app/ingest.py`
+  - `app/ingest.py` — scheduled re-scrape of a fixed URL list (`APOLLO_INGEST_URLS`), run by `docker compose run` locally or a k8s `CronJob`
   - `app/playlists.py` — the genre -> playlist catalog behind the dropdowns
   - `app/logging_config.py` — logging setup (console + rotating file)
   - `app/static/index.html` — the front end's HTML (scrape, browse, play, download) — served by `frontend/`, not by the API

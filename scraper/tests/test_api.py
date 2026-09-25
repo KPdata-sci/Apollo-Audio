@@ -13,9 +13,9 @@ def test_health():
     assert resp.json() == {"status": "ok"}
 
 
-@patch("app.main.warehouse.load_tracks", return_value=1)
-@patch("app.main.lake.put_raw_scrape", return_value="raw/soundcloud/fake.json")
-@patch("app.main.fetch_html", new_callable=AsyncMock)
+@patch("app.pipeline.warehouse.load_tracks", return_value=1)
+@patch("app.pipeline.lake.put_raw_scrape", return_value="raw/soundcloud/fake.json")
+@patch("app.pipeline.fetch_html", new_callable=AsyncMock)
 def test_scrape_endpoint_lands_in_lake_then_warehouse(mock_fetch, mock_put_raw, mock_load, monkeypatch):
     mock_fetch.return_value = (
         """
@@ -73,9 +73,9 @@ def test_playlist_catalog_endpoint_is_empty_by_default():
     assert resp.json() == {}
 
 
-@patch("app.main.warehouse.load_tracks")
-@patch("app.main.lake.put_raw_scrape")
-@patch("app.main.fetch_html", new_callable=AsyncMock)
+@patch("app.pipeline.warehouse.load_tracks")
+@patch("app.pipeline.lake.put_raw_scrape")
+@patch("app.pipeline.fetch_html", new_callable=AsyncMock)
 def test_scrape_returns_422_when_page_requires_login(mock_fetch, mock_put_raw, mock_load):
     mock_fetch.return_value = (
         "<html><body>You may have to log in to view this playlist, or it may have been deleted.</body></html>",
@@ -88,3 +88,17 @@ def test_scrape_returns_422_when_page_requires_login(mock_fetch, mock_put_raw, m
     assert "APOLLO_SOUNDCLOUD_COOKIES" in resp.json()["detail"]
     mock_put_raw.assert_not_called()
     mock_load.assert_not_called()
+
+
+def test_scrape_rejects_non_soundcloud_url():
+    resp = client.post("/scrape", json={"url": "http://169.254.169.254/latest/meta-data/"})
+
+    assert resp.status_code == 422
+    assert "soundcloud.com" in resp.json()["detail"]
+
+
+def test_discover_playlists_rejects_non_soundcloud_url():
+    resp = client.post("/api/discover-playlists", json={"profile_url": "http://example.com"})
+
+    assert resp.status_code == 422
+    assert "soundcloud.com" in resp.json()["detail"]
