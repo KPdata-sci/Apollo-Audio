@@ -1,13 +1,47 @@
+import asyncio
 import logging
 import re
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
 from .settings import settings
 
 logger = logging.getLogger("apollo.scraping")
+
+# Serializes all Playwright browser usage within this process. A single pod
+# has a fixed CPU/memory budget (see infra/terraform-k8s/api.tf) sized for one
+# Firefox+scroll session at a time — without this, two concurrent /scrape (or
+# /api/discover-playlists) requests would each launch their own browser and
+# could exceed it. Cross-replica concurrency is a separate, already-handled
+# concern (replicas pinned to 1 — see api.tf).
+_browser_semaphore = asyncio.Semaphore(1)
+
+# Retries only cover transient navigation failures (timeout, network blip) —
+# not the "requires login" case, which isn't an exception at all (SoundCloud
+# returns a normal 200 with an error page, detected downstream in main.py).
+_NAV_RETRY_ATTEMPTS = 3
+_NAV_RETRY_BASE_DELAY_S = 1.0
+
+
+async def _goto_with_retry(page, url: str) -> None:
+    delay = _NAV_RETRY_BASE_DELAY_S
+    for attempt in range(1, _NAV_RETRY_ATTEMPTS + 1):
+        try:
+            await page.goto(url, timeout=settings.scrape_timeout_ms)
+            return
+        except (PlaywrightTimeoutError, PlaywrightError):
+            if attempt == _NAV_RETRY_ATTEMPTS:
+                raise
+            logger.warning(
+                "Navigation to %s failed (attempt %d/%d), retrying in %.1fs",
+                url, attempt, _NAV_RETRY_ATTEMPTS, delay,
+            )
+            await asyncio.sleep(delay)
+            delay *= 2
 
 # SoundCloud's frontend renders track lists with a couple of different class
 # combinations depending on page type (playlist vs. user stream). We try each
@@ -52,7 +86,7 @@ async def fetch_html(url: str) -> tuple[str, list | None]:
     track details client-side and populate them into the *live* JS object —
     reading that live object after scrolling gets every track fully hydrated,
     not just the first few."""
-    async with async_playwright() as p:
+    async with _browser_semaphore, async_playwright() as p:
         browser = await p.firefox.launch(headless=True)
         try:
             context = await browser.new_context()
@@ -62,7 +96,7 @@ async def fetch_html(url: str) -> tuple[str, list | None]:
                 await context.add_cookies(_parse_cookie_header(settings.soundcloud_cookies))
             page = await context.new_page()
             logger.debug("Navigating to %s", url)
-            await page.goto(url, timeout=settings.scrape_timeout_ms)
+            await _goto_with_retry(page, url)
 
             last_height = await page.evaluate("document.body.scrollHeight")
             iterations = 0

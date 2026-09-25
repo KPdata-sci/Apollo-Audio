@@ -19,6 +19,16 @@ resource "kubernetes_deployment" "adminer" {
           port {
             container_port = 8080
           }
+          resources {
+            requests = {
+              cpu    = "25m"
+              memory = "64Mi"
+            }
+            limits = {
+              cpu    = "250m"
+              memory = "256Mi"
+            }
+          }
         }
       }
     }

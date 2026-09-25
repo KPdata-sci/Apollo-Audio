@@ -6,9 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A dockerized SoundCloud playlist/profile scraper: FastAPI + Playwright app
 (`scraper/`) that scrapes SoundCloud, lands raw results in a filesystem data
-lake, then upserts parsed tracks into a Postgres warehouse. Ships with a
-single-page vanilla-JS front end (scrape, browse a profile's playlists, play
-via SoundCloud's own embed widget, download only when the artist enabled it).
+lake, then upserts parsed tracks into a Postgres warehouse. The single-page
+vanilla-JS front end (scrape, browse a profile's playlists, play via
+SoundCloud's own embed widget, download only when the artist enabled it) is a
+**separate** deployable (`frontend/`, nginx serving `scraper/app/static/index.html`)
+— the API no longer mounts or serves it. They talk over the network
+(`window.APOLLO_API_BASE` + CORS), not same-origin. See `docs/HOSTING.md` for
+the Kubernetes/Tailscale deployment this split was built for, and
+`infra/terraform-k8s/` for the manifests.
 
 ## Commands
 
@@ -17,15 +22,15 @@ Run the whole stack:
 cp .env.example .env      # first time only
 docker compose up --build
 ```
-App: http://localhost:8000 (UI + `/docs` for Swagger). Adminer: :8081. Postgres: :5432.
+UI: http://localhost:8080 (`frontend`, nginx). API: http://localhost:8000 (`api`, `/docs` for Swagger). Adminer: :8081. Postgres: :5432.
 
 Run tests (they're excluded from the built image via `scraper/.dockerignore`,
 so copy them into the running container rather than rebuilding):
 ```bash
-docker compose exec -T scraper rm -rf /app/tests   # clear any stale copy first — `cp` into an
-                                                     # existing dir nests it and doubles test collection
-docker compose cp scraper/tests scraper:/app/tests
-docker compose exec -T scraper sh -c "pip install -q pytest httpx && cd /app && python -m pytest tests -q"
+docker compose exec -T api rm -rf /app/tests   # clear any stale copy first — `cp` into an
+                                                 # existing dir nests it and doubles test collection
+docker compose cp scraper/tests api:/app/tests
+docker compose exec -T api sh -c "pip install -q pytest httpx && cd /app && python -m pytest tests -q"
 ```
 Single test: append `::test_name` to the `pytest tests -q` invocation, e.g. `pytest tests/test_scraping.py::test_parse_playlist_markup_no_hydration -q`.
 
@@ -40,7 +45,7 @@ uvicorn app.main:app --reload   # or: pytest
 
 No linter/formatter is configured in this repo (no pyproject.toml, no ruff/flake8 config) — don't assume one.
 
-Rebuild after changing `scraper/` code: `docker compose up -d --build scraper`.
+Rebuild after changing `scraper/` code: `docker compose up -d --build api`. After changing `scraper/app/static/index.html`, rebuild `frontend` instead (it's a separate container now, see "Architecture" below).
 
 ## Architecture
 
@@ -102,8 +107,15 @@ double-compresses backups as they shift down slots (`.2.gz` re-gzipped into
 already-compressed files instead of re-wrapping them.
 
 **Front end** (`scraper/app/static/index.html`): single file, no build step,
-no framework, served by mounting `StaticFiles` at `/` — mounted *last* in
-`main.py` so it only catches paths the API routes above it didn't claim.
+no framework. Served by the separate `frontend/` nginx image, **not** mounted
+on the FastAPI app — `main.py` is a pure JSON API now (CORS via
+`APOLLO_CORS_ORIGINS`, no `StaticFiles`). The page reads the API's address
+from `window.APOLLO_API_BASE`, set at container start by
+`frontend/40-apollo-config.sh` from the `API_BASE_URL` env var — empty means
+"same origin," which only the old combined setup relied on. `POST /scrape`
+and `POST /api/discover-playlists` go through `require_api_key` (`main.py`),
+a no-op unless `APOLLO_API_KEY` is set — see `docs/HOSTING.md` for why this
+is a deterrent, not real auth.
 
 **Playlist catalog** (`playlists.py`): ships with an empty `CATALOG` dict by
 design — no third-party or personal SoundCloud accounts are baked into this

@@ -44,15 +44,19 @@
     padding: 20px;
   }
   .panel h2 { margin: 0 0 14px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  .scrape-form { display: flex; gap: 8px; }
+  .scrape-form { display: flex; gap: 8px; flex-wrap: wrap; }
   input[type="url"], input[type="search"] {
     flex: 1;
+    min-width: 200px;
     background: #0d0f13;
     border: 1px solid var(--border);
     color: var(--text);
     padding: 10px 12px;
     border-radius: 6px;
-    font-size: 14px;
+    /* 16px, not 14px: iOS Safari auto-zooms the page on focus for any input
+       under 16px, which is jarring on a phone (this app is used over
+       Tailscale from mobile, see docs/HOSTING.md). */
+    font-size: 16px;
   }
   input:focus { outline: none; border-color: var(--accent); }
   button {
@@ -70,7 +74,10 @@
   .status { margin-top: 12px; font-size: 13px; min-height: 18px; }
   .status.error { color: var(--danger); }
   .status.ok { color: var(--ok); }
-  .browse-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; }
+  .browse-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+  /* Contained horizontal scroll instead of the whole page scrolling
+     sideways on a narrow (phone) viewport. */
+  #table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
@@ -81,14 +88,16 @@
   .pager { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; color: var(--muted); }
   .pager button { padding: 6px 12px; font-weight: 500; }
   .empty { color: var(--muted); font-size: 13px; padding: 24px 0; text-align: center; }
-  .catalog-controls { display: flex; gap: 8px; margin-bottom: 14px; }
+  .catalog-controls { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   select {
     background: #0d0f13;
     border: 1px solid var(--border);
     color: var(--text);
     padding: 10px 12px;
     border-radius: 6px;
-    font-size: 14px;
+    font-size: 16px; /* see input[type="url"] comment above */
+    flex: 1;
+    min-width: 160px;
   }
   select:focus { outline: none; border-color: var(--accent); }
   .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0; }
@@ -105,8 +114,20 @@
   }
   .icon-btn:hover:not(:disabled) { background: #0d0f13; border-color: var(--accent); color: var(--accent); }
   .icon-btn.playing { background: var(--accent); border-color: var(--accent); color: white; }
+  .icon-btn.key-set { border-color: var(--ok); color: var(--ok); }
   td.actions { white-space: nowrap; }
   td.actions .icon-btn + .icon-btn { margin-left: 6px; }
+
+  /* Below this width: stack the scrape controls, and give tap targets
+     (Play/Download/pager buttons) more room — the desktop sizing above is
+     too tight to tap reliably on a phone. */
+  @media (max-width: 600px) {
+    main { padding: 16px 16px 48px; }
+    .catalog-controls, .scrape-form { flex-direction: column; align-items: stretch; }
+    .icon-btn { padding: 8px 12px; font-size: 13px; }
+    td.actions .icon-btn + .icon-btn { margin-left: 10px; }
+    .pager button { padding: 10px 16px; }
+  }
   tr.player-row td { padding: 0; border-bottom: 1px solid var(--border); }
   tr.player-row iframe { display: block; width: 100%; height: 120px; border: 0; }
   .spinner {
@@ -126,9 +147,12 @@
 </head>
 <body>
 
-<header>
-  <h1>Project Apollo</h1>
-  <p>SoundCloud scraper — data lake → data warehouse</p>
+<header style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+  <div>
+    <h1>Project Apollo</h1>
+    <p>SoundCloud scraper — data lake → data warehouse</p>
+  </div>
+  <button type="button" id="api-key-btn" class="icon-btn" style="margin-top:24px;" title="Set the API key used for scrape/browse requests">🔑 API key</button>
 </header>
 
 <main>
@@ -136,39 +160,92 @@
     <h2>Scrape a playlist / set</h2>
 
     <div class="catalog-controls">
-      <select id="genre-select"><option value="">Choose a genre…</option></select>
-      <select id="playlist-select" disabled><option value="">Choose a playlist…</option></select>
+      <select id="genre-select" aria-label="Genre"><option value="">Choose a genre…</option></select>
+      <select id="playlist-select" disabled aria-label="Playlist"><option value="">Choose a playlist…</option></select>
     </div>
     <div class="divider">or paste a URL</div>
 
     <form id="scrape-form" class="scrape-form">
-      <input type="url" id="scrape-url" placeholder="https://soundcloud.com/artist/sets/playlist" required>
+      <input type="url" id="scrape-url" aria-label="SoundCloud playlist or set URL" placeholder="https://soundcloud.com/artist/sets/playlist" required>
       <button type="submit" id="scrape-btn">Scrape</button>
     </form>
-    <div id="scrape-status" class="status"></div>
+    <div id="scrape-status" class="status" role="status" aria-live="polite"></div>
   </section>
 
   <section class="panel">
     <h2>Browse a profile's playlists</h2>
     <form id="browse-form" class="scrape-form">
-      <input type="url" id="browse-url" placeholder="https://soundcloud.com/some-artist" required>
+      <input type="url" id="browse-url" aria-label="SoundCloud profile URL" placeholder="https://soundcloud.com/some-artist" required>
       <button type="submit" id="browse-btn">Browse</button>
     </form>
-    <div id="browse-status" class="status"></div>
+    <div id="browse-status" class="status" role="status" aria-live="polite"></div>
     <div id="browse-results"></div>
   </section>
 
   <section class="panel">
     <div class="browse-controls">
       <h2 style="margin:0;">Tracks</h2>
-      <input type="search" id="search" placeholder="Filter by artist or title…" style="max-width: 260px;">
+      <input type="search" id="search" aria-label="Filter tracks by artist or title" placeholder="Filter by artist or title…" style="max-width: 260px;">
     </div>
     <div id="table-wrap"></div>
     <div id="pager" class="pager"></div>
   </section>
 </main>
 
+<script src="config.js"></script>
 <script>
+// config.js (generated per-deployment, see frontend/) sets window.APOLLO_API_BASE
+// to the API's own origin when the frontend is served separately from it — e.g.
+// "https://api.example.ts.net". Empty/missing means "same origin as this page",
+// which is what docker-compose's combined dev setup still relies on.
+const API_BASE = (window.APOLLO_API_BASE || "").replace(/\/$/, "");
+function apiUrl(path) {
+  return API_BASE + path;
+}
+
+// The write endpoints (/scrape, /api/discover-playlists) are gated by a shared
+// API key when the server has APOLLO_API_KEY set — see docs/HOSTING.md. Stored
+// in localStorage rather than baked into this file, since this page can be
+// served publicly with no login: anyone can still read this key out of the
+// browser's network tab, so treat it as a deterrent against casual/automated
+// abuse, not real authentication.
+const API_KEY_STORAGE_KEY = "apollo_api_key";
+function getApiKey() {
+  try {
+    return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+function setApiKey(key) {
+  try {
+    if (key) localStorage.setItem(API_KEY_STORAGE_KEY, key);
+    else localStorage.removeItem(API_KEY_STORAGE_KEY);
+  } catch {
+    // localStorage unavailable (private browsing etc.) — key just won't persist
+  }
+}
+function authHeaders() {
+  const key = getApiKey();
+  return key ? { "X-API-Key": key } : {};
+}
+
+const apiKeyBtn = document.getElementById("api-key-btn");
+function refreshApiKeyBtnState() {
+  const hasKey = Boolean(getApiKey());
+  apiKeyBtn.classList.toggle("key-set", hasKey);
+  apiKeyBtn.textContent = hasKey ? "🔑 API key set" : "🔑 API key";
+}
+apiKeyBtn.addEventListener("click", () => {
+  const current = getApiKey();
+  const next = window.prompt("API key for scrape/browse requests (leave blank to clear):", current);
+  if (next !== null) {
+    setApiKey(next.trim());
+    refreshApiKeyBtnState();
+  }
+});
+refreshApiKeyBtnState();
+
 const state = { search: "", limit: 25, offset: 0, total: 0, playingUrl: null };
 
 const scrapeForm = document.getElementById("scrape-form");
@@ -188,7 +265,7 @@ const browseResults = document.getElementById("browse-results");
 
 async function loadCatalog() {
   try {
-    const res = await fetch("/api/playlists");
+    const res = await fetch(apiUrl("/api/playlists"));
     if (!res.ok) return;
     const catalog = await res.json();
 
@@ -242,7 +319,16 @@ async function loadTracks() {
   const params = new URLSearchParams({
     search: state.search, limit: state.limit, offset: state.offset
   });
-  const res = await fetch(`/api/tracks?${params}`);
+  let res;
+  try {
+    res = await fetch(apiUrl(`/api/tracks?${params}`));
+  } catch (err) {
+    // A thrown fetch (DNS/connection failure, unreachable API) rather than an
+    // HTTP error response — same user-facing treatment as the !res.ok case
+    // below, instead of leaving this silently blank.
+    tableWrap.innerHTML = `<div class="empty">Failed to reach the API (${err.message}). Is APOLLO_API_BASE (${API_BASE || "same origin"}) reachable from this device?</div>`;
+    return;
+  }
   if (!res.ok) {
     tableWrap.innerHTML = `<div class="empty">Failed to load tracks (HTTP ${res.status}).</div>`;
     return;
@@ -277,7 +363,7 @@ function renderTable(items) {
     </tr>`;
     const playerHtml = isPlaying ? `
     <tr class="player-row"><td colspan="5">
-      <iframe src="${embedUrl(t.url)}" allow="autoplay"></iframe>
+      <iframe src="${embedUrl(t.url)}" allow="autoplay" title="${escapeHtml(`SoundCloud player — ${t.artist} – ${t.title}`)}"></iframe>
     </td></tr>` : "";
     return rowHtml + playerHtml;
   }).join("");
@@ -341,13 +427,24 @@ browseForm.addEventListener("submit", async (e) => {
   browseResults.innerHTML = "";
 
   try {
-    const res = await fetch("/api/discover-playlists", {
+    const res = await fetch(apiUrl("/api/discover-playlists"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ profile_url: profileUrl })
     });
-    const body = await res.json();
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+      // Non-JSON error body (e.g. a proxy/nginx error page instead of the
+      // API's own JSON) — fall back to a plain status-code message below
+      // instead of surfacing a raw "Unexpected token" parse error.
+      body = {};
+    }
 
+    if (res.status === 401) {
+      throw new Error(`${body.detail || "API key required"} — set one via the 🔑 API key button above.`);
+    }
     if (!res.ok) {
       throw new Error(body.detail || `HTTP ${res.status}`);
     }
@@ -395,13 +492,21 @@ scrapeForm.addEventListener("submit", async (e) => {
   scrapeStatus.innerHTML = `<span class="spinner"></span>Scraping — this can take up to a minute…`;
 
   try {
-    const res = await fetch("/scrape", {
+    const res = await fetch(apiUrl("/scrape"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ url })
     });
-    const body = await res.json();
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+      body = {};
+    }
 
+    if (res.status === 401) {
+      throw new Error(`${body.detail || "API key required"} — set one via the 🔑 API key button above.`);
+    }
     if (!res.ok) {
       throw new Error(body.detail || `HTTP ${res.status}`);
     }

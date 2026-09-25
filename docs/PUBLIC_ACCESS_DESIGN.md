@@ -1,3 +1,10 @@
+> **Status**: the "put it on Tailscale" recommendation below is now the plan
+> actually being built — see `docs/HOSTING.md` for the concrete setup
+> (Docker Desktop's Kubernetes instead of a rented VPS, API decoupled from
+> the front end, the security checklist). This doc stays as the reasoning
+> for *why* Tailscale over a public URL, and as the reference for the public
+> URL path if that's ever needed later.
+
 # Making this reachable from anywhere — design plan (not yet built)
 
 Scope, as confirmed: **single-user remote access** (you, from your phone or

@@ -3,10 +3,13 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.staticfiles import StaticFiles
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from . import lake, playlists, warehouse
 from .logging_config import configure_logging, request_id_var
@@ -19,8 +22,7 @@ from .models import (
     TracksPage,
 )
 from .scraping import discover_playlists, fetch_html, parse_html
-
-STATIC_DIR = Path(__file__).parent / "static"
+from .settings import settings
 
 configure_logging()
 logger = logging.getLogger("apollo.main")
@@ -29,10 +31,35 @@ logger = logging.getLogger("apollo.main")
 # logged in as its owner — used to turn a silent "0 tracks" into a clear error.
 _LOGIN_REQUIRED_MARKER = "may have to log in to view this playlist"
 
+# This API drives a real headless browser to whatever URL it's given —
+# without this check, POST /scrape / /api/discover-playlists is an open SSRF
+# primitive (internal network probing, cloud metadata endpoints, etc.),
+# especially once reachable outside localhost.
+_ALLOWED_HOSTS = {"soundcloud.com"}
+
+
+def _is_allowed_host(url: str) -> bool:
+    host = (urlsplit(url).hostname or "").lower()
+    return host in _ALLOWED_HOSTS or host.endswith(".soundcloud.com")
+
+
+def _require_soundcloud_host(url: str) -> None:
+    if not _is_allowed_host(url):
+        raise HTTPException(
+            status_code=422,
+            detail="Only soundcloud.com URLs are allowed.",
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     lake.ensure_bucket()
+    if not settings.api_key:
+        logger.warning(
+            "APOLLO_API_KEY is not set — POST /scrape and POST /api/discover-playlists "
+            "are unauthenticated. Set APOLLO_API_KEY before this API is reachable "
+            "outside a fully trusted network (see docs/HOSTING.md)."
+        )
     logger.info("Startup complete — lake backend ready")
     yield
 
@@ -47,6 +74,37 @@ app = FastAPI(
     version="0.3.0",
     lifespan=lifespan,
 )
+
+# Only relevant once the front end is served from a different origin (see
+# frontend/) — same-origin requests (the old combined docker-compose setup)
+# never hit CORS checks at all. "*" is fine here because these endpoints don't
+# use cookies/session auth; the write endpoints have their own gate below.
+_cors_origins = ["*"] if settings.cors_origins.strip() == "*" else [
+    o.strip() for o in settings.cors_origins.split(",") if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Each /scrape call drives a full headless browser — cheap to trigger, costly
+# to run. Per-IP limits (keyed by X-API-Key when set, since a shared tailnet
+# egress can otherwise put many people behind one IP) stop a runaway client
+# (or naive abuse) from queuing up concurrent scrapes.
+limiter = Limiter(key_func=lambda request: request.headers.get("x-api-key") or get_remote_address(request))
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+def require_api_key(x_api_key: str = Header(default="")) -> None:
+    """Gate for endpoints that trigger real work (scraping/browsing SoundCloud).
+    A no-op when APOLLO_API_KEY isn't set, matching this app's behavior before
+    this setting existed — set it once this API is reachable outside a trusted
+    network. Read endpoints (/api/tracks, /api/playlists) are never gated."""
+    if settings.api_key and x_api_key != settings.api_key:
+        raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key header")
 
 
 @app.middleware("http")
@@ -84,8 +142,10 @@ def health() -> dict:
     response_model=ScrapeResult,
     tags=["scrape"],
     summary="Scrape a SoundCloud playlist, set, or profile",
+    dependencies=[Depends(require_api_key)],
 )
-async def scrape(request: ScrapeRequest) -> ScrapeResult:
+@limiter.limit("10/minute")
+async def scrape(request: Request, payload: ScrapeRequest) -> ScrapeResult:
     """Fetches the given SoundCloud URL with a headless browser, scrolls it to
     trigger SoundCloud's own lazy-loading, extracts the track list (title,
     artist, genre, url, downloadable), lands the raw result in the data lake,
@@ -96,7 +156,8 @@ async def scrape(request: ScrapeRequest) -> ScrapeResult:
     "Discover Weekly") will fail with a 422 unless `APOLLO_SOUNDCLOUD_COOKIES`
     is configured — see .env.example.
     """
-    url = str(request.url)
+    url = str(payload.url)
+    _require_soundcloud_host(url)
     logger.info("Scrape requested for %s", url)
 
     fetch_start = time.monotonic()
@@ -132,7 +193,11 @@ async def scrape(request: ScrapeRequest) -> ScrapeResult:
     # 1. Land the raw scrape in the data lake first — this is the durable,
     #    replayable record, independent of whatever the warehouse schema looks like today.
     lake_start = time.monotonic()
-    lake_key = lake.put_raw_scrape(url, tracks, scraped_at=scraped_at)
+    try:
+        lake_key = lake.put_raw_scrape(url, tracks, scraped_at=scraped_at)
+    except Exception as exc:  # noqa: BLE001 - surfaced to the caller as a 502
+        logger.exception("Failed to write raw scrape to the lake for %s", url)
+        raise HTTPException(status_code=502, detail="Failed to write scrape result to the data lake") from exc
     lake_ms = (time.monotonic() - lake_start) * 1000
 
     # 2. Load the parsed rows into the warehouse for querying.
@@ -178,13 +243,16 @@ def list_tracks(search: str = "", limit: int = 50, offset: int = 0) -> TracksPag
     response_model=DiscoveredPlaylists,
     tags=["catalog"],
     summary="Browse a profile's playlists without scraping them",
+    dependencies=[Depends(require_api_key)],
 )
-async def discover_playlists_endpoint(request: DiscoverPlaylistsRequest) -> DiscoveredPlaylists:
+@limiter.limit("20/minute")
+async def discover_playlists_endpoint(request: Request, payload: DiscoverPlaylistsRequest) -> DiscoveredPlaylists:
     """Fetches the given profile's `/sets` page (its playlist index) and
     returns every playlist listed there — a read-only browse step, separate
     from scraping. Nothing is written to the lake or warehouse here; use the
     returned urls with POST /scrape for whichever ones you actually want."""
-    profile_url = str(request.profile_url)
+    profile_url = str(payload.profile_url)
+    _require_soundcloud_host(profile_url)
     logger.info("Discovering playlists for %s", profile_url)
 
     try:
@@ -208,8 +276,3 @@ def list_playlist_catalog() -> dict[str, list[PlaylistEntry]]:
     populate the front end's genre/playlist dropdowns. Edit
     scraper/app/playlists.py to add your own entries — no migration needed."""
     return playlists.list_playlists()
-
-
-# Mounted last so it only catches paths the routes above didn't — serves the
-# front end at "/" and its assets, without shadowing the API endpoints.
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

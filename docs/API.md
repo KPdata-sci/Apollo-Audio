@@ -1,8 +1,16 @@
 # API Reference
 
-Base URL: `http://localhost:8000`
+Base URL: `http://localhost:8000` for local dev. This is a standalone API,
+decoupled from the front end (`frontend/`, a separate nginx container/Service)
+— see `docs/HOSTING.md` for the split and why.
 
 Interactive docs (try-it-out, generated from the same code): `GET /docs` (Swagger UI) or `GET /redoc`.
+
+**Auth**: `POST /scrape` and `POST /api/discover-playlists` require an
+`X-API-Key` header matching `APOLLO_API_KEY` *when that setting is
+non-empty* — it's empty (no auth) by default for local dev. `GET /api/tracks`
+and `GET /api/playlists` are never gated. See `docs/HOSTING.md` for what this
+does and doesn't protect against.
 
 ---
 
@@ -50,8 +58,10 @@ Takes ~10-60 seconds — it drives a real headless browser and scrolls the page 
 **Errors**
 | Status | When |
 |---|---|
-| `422` | SoundCloud's own page says this requires being logged in as its owner (e.g. a personal Discover Weekly). See `APOLLO_SOUNDCLOUD_COOKIES` in `.env.example`. |
-| `502` | The headless browser failed to load the page at all (timeout, network error, SoundCloud unreachable). |
+| `401` | `APOLLO_API_KEY` is set and the request's `X-API-Key` header is missing or wrong. |
+| `422` | The URL isn't a `soundcloud.com` URL, or SoundCloud's own page says this requires being logged in as its owner (e.g. a personal Discover Weekly — see `APOLLO_SOUNDCLOUD_COOKIES` in `.env.example`). |
+| `429` | Rate limit exceeded (10 requests/minute, keyed by `X-API-Key` when set, otherwise by IP). |
+| `502` | The headless browser failed to load the page at all after retries (timeout, network error, SoundCloud unreachable), or the result failed to write to the data lake. |
 
 `downloadable` is only ever `true` when SoundCloud's own data says the uploader enabled downloads for that specific track — it is never inferred. The front end uses it to decide whether to show a download link at all; that link always points at the track's own SoundCloud page (this API never serves or proxies audio files).
 
@@ -113,7 +123,10 @@ Browses a profile's `/sets` page and lists its playlists — a read-only step, s
 **Errors**
 | Status | When |
 |---|---|
-| `502` | The headless browser failed to load the profile page. |
+| `401` | `APOLLO_API_KEY` is set and the request's `X-API-Key` header is missing or wrong. |
+| `422` | The URL isn't a `soundcloud.com` URL. |
+| `429` | Rate limit exceeded (20 requests/minute, keyed by `X-API-Key` when set, otherwise by IP). |
+| `502` | The headless browser failed to load the profile page after retries. |
 
 ---
 

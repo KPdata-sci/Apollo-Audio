@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     # login wall (no test account was available while building this).
     soundcloud_cookies: str = ""
 
+    # Standalone-API deployment. When set, POST /scrape and POST
+    # /api/discover-playlists require a matching `X-API-Key` header (GET
+    # endpoints stay open either way). Empty (the default, and what
+    # docker-compose's local dev setup uses) means those endpoints are
+    # unauthenticated, same as before this setting existed. Set via
+    # APOLLO_API_KEY — never commit a real value.
+    api_key: str = ""
+
+    # Comma-separated list of origins allowed to call this API cross-origin
+    # (needed once the front end is served from a different origin than the
+    # API — see frontend/). "*" (default) allows any origin, which is fine for
+    # the GET endpoints but means don't rely on cookies/session auth here.
+    cors_origins: str = "*"
+
     # Logging
     log_level: str = "INFO"
     log_dir: str = "/var/log/apollo"
