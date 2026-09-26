@@ -78,9 +78,12 @@ on phones, with the bottom tab bar.
   a Favorites count), a debounced search (press `/` to focus), genre chips
   with counts, a source filter, a Favorites-only toggle, sorting (including
   "Most played", by SoundCloud's own play count) and paging. Every track row
-  has a heart button to favorite it — a shared list, not per-user, since this
-  app has no accounts (see [CLAUDE.md](CLAUDE.md)). It reads `GET /api/stats`
-  and `GET /api/tracks?search=&genre=&source_url=&sort=&favorited_only=`.
+  shows its own artwork (or the uploader's avatar, when a track has none of
+  its own) hotlinked straight from SoundCloud's CDN — this app never
+  downloads or rehosts it, same policy as audio itself — and has a heart
+  button to favorite it, a shared list rather than per-user since this app
+  has no accounts (see [CLAUDE.md](CLAUDE.md)). It reads `GET /api/stats` and
+  `GET /api/tracks?search=&genre=&source_url=&sort=&favorited_only=`.
 
 Every scrape goes through one queue, one at a time. The strip under the
 header shows what's running, the elapsed time and how many are queued, with

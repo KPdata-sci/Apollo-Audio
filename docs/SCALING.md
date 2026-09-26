@@ -53,6 +53,21 @@ elsewhere in the app assumes a single row per track.
   replica behind `list_tracks`/`get_stats` is the standard next step — no
   code changes beyond pointing read-only queries at a second DSN.
 
+## Artwork is hotlinked, not mirrored
+
+`artwork_url` is always SoundCloud's own CDN url (see `CLAUDE.md`'s
+playback/download/artwork policy note) — the front end's `<img>` tags fetch
+it directly from `i1.sndcdn.com`, so this app carries none of that bandwidth
+and needs no image storage. The trade-off: a url captured at scrape time is
+only as durable as SoundCloud's own CDN keeps it working (an already-broken
+one just shows the colored-initials fallback the front end always renders
+underneath — see `trackHtml()` in `index.html`). If that ever becomes a
+real problem (a noticeable fraction of images going dead, or wanting
+artwork available even if a track's SoundCloud page later disappears), the
+next step is a proper caching proxy — fetch once, store in the data lake or
+a CDN-backed bucket, serve from there — not something to build ahead of
+seeing it actually matter.
+
 ## Caching
 
 `GET /api/tracks` already revalidates via ETag on every load (see

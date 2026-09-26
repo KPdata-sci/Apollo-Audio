@@ -92,13 +92,16 @@ strips tracking query params like `?in=`) before comparing across DOM/hydration
 sources or against the warehouse — otherwise the same track looks different
 depending on where it was linked from.
 
-**Playback/download is a deliberate policy boundary, not just a feature
-choice**: playback streams through SoundCloud's own embeddable player
+**Playback/download/artwork is a deliberate policy boundary, not just a
+feature choice**: playback streams through SoundCloud's own embeddable player
 (`w.soundcloud.com/player`), never downloads or proxies audio. A download
 link is shown *only* when SoundCloud's own data says `downloadable: true` for
 that specific track, and even then it links to the track's SoundCloud page
 rather than serving a file. Don't build a stream-URL-resolving downloader —
-that was a deliberate choice, not an oversight.
+that was a deliberate choice, not an oversight. Artwork follows the same
+rule: `artwork_url` (see `_upsize_artwork` in `scraping.py`) is always a
+SoundCloud CDN url that the front end hotlinks directly (`<img src=...>`) —
+this app never downloads, caches, or rehosts the image bytes themselves.
 
 **Config** (`settings.py`): `pydantic-settings` `BaseSettings`, all env vars
 prefixed `APOLLO_`. Notable ones: `APOLLO_LAKE_BACKEND` (`filesystem` default,
@@ -163,13 +166,17 @@ out blanks and `#`-hashtag spam. Every genre it returns must round-trip as
 `/api/tracks?genre=` with the same count. `tests/test_warehouse_integration.py`
 checks this read-only against a real DB, and skips when none is reachable.
 
-**Popularity and favorites**: `playback_count`/`likes_count` come from the
-same hydration state as `genre`/`downloadable` (see `_track_from_hydration`
-in `scraping.py`), so they share its limitation — populated on playlist/set
-pages, always `null` on profile/stream pages (no per-track hydration there at
-all). `sort=popular` on `GET /api/tracks` orders by
-`coalesce(playback_count, 0) DESC`, so an unknown count sorts last rather
-than being excluded. Favorites live in their own `favorites` table
+**Popularity, artwork, and favorites**: `playback_count`/`likes_count`/
+`artwork_url` all come from the same hydration state as `genre`/`downloadable`
+(see `_track_from_hydration` in `scraping.py`), so they share its
+limitation — populated on playlist/set pages, always `null` on profile/stream
+pages (no per-track hydration there at all) *unless* a fallback exists:
+`artwork_url` falls back to the uploader's avatar (`user.avatar_url`) when a
+track has no artwork of its own, and — for a profile/stream page track
+attributed to its owner via `_hydration_profile_owner` — to that owner's
+avatar, so a track essentially never ends up with no image at all. `sort=popular`
+on `GET /api/tracks` orders by `coalesce(playback_count, 0) DESC`, so an
+unknown count sorts last rather than being excluded. Favorites live in their own `favorites` table
 (`track_id` PK, `ON DELETE CASCADE`) rather than a column on `tracks` — a
 column would need special-casing in the upsert's `ON CONFLICT DO UPDATE` to
 avoid a rescrape silently un-favoriting a track every time it resurfaces;

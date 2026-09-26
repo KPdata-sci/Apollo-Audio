@@ -31,6 +31,14 @@ ALTER TABLE tracks ADD COLUMN IF NOT EXISTS downloadable BOOLEAN NOT NULL DEFAUL
 ALTER TABLE tracks ADD COLUMN IF NOT EXISTS playback_count BIGINT;
 ALTER TABLE tracks ADD COLUMN IF NOT EXISTS likes_count BIGINT;
 
+-- The track's own artwork, or the uploader's avatar as a fallback when a
+-- track has none of its own (see app/scraping.py::_track_from_hydration) —
+-- always SoundCloud's own CDN url, hotlinked rather than mirrored (this app
+-- never downloads/rehosts SoundCloud's media, same policy as audio — see
+-- CLAUDE.md). Refreshed on every rescrape like the other SoundCloud-owned
+-- counters above.
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS artwork_url VARCHAR(1024);
+
 -- A track's own popularity counters are fine to overwrite on every rescrape
 -- (they're just SoundCloud's live numbers) — but a favorite is a decision a
 -- person made in this app, so it lives in its own table rather than a column

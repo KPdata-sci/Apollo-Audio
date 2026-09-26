@@ -19,6 +19,7 @@ class Track(BaseModel):
     downloadable: bool = False
     playback_count: int | None = None
     likes_count: int | None = None
+    artwork_url: str | None = None
 
 
 class ScrapeResult(BaseModel):
@@ -38,6 +39,7 @@ class TrackRow(BaseModel):
     downloadable: bool = False
     playback_count: int | None = None
     likes_count: int | None = None
+    artwork_url: str | None = None
     favorited: bool = False
     source_url: str
     scraped_at: datetime

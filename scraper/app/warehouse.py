@@ -9,26 +9,27 @@ from .settings import settings
 logger = logging.getLogger("apollo.warehouse")
 
 _UPSERT_SQL = """
-INSERT INTO tracks (artist, title, genre, url, downloadable, playback_count, likes_count, source_url, lake_object_key, scraped_at)
-VALUES (%(artist)s, %(title)s, %(genre)s, %(url)s, %(downloadable)s, %(playback_count)s, %(likes_count)s, %(source_url)s, %(lake_object_key)s, %(scraped_at)s)
+INSERT INTO tracks (artist, title, genre, url, downloadable, playback_count, likes_count, artwork_url, source_url, lake_object_key, scraped_at)
+VALUES (%(artist)s, %(title)s, %(genre)s, %(url)s, %(downloadable)s, %(playback_count)s, %(likes_count)s, %(artwork_url)s, %(source_url)s, %(lake_object_key)s, %(scraped_at)s)
 ON CONFLICT (url) DO UPDATE SET
     artist = EXCLUDED.artist,
     title = EXCLUDED.title,
     genre = EXCLUDED.genre,
     downloadable = EXCLUDED.downloadable,
-    -- Popularity counters are just SoundCloud's live numbers, refreshed on
-    -- every rescrape like any other column here — unlike a favorite (see
-    -- the `favorites` table), there's no "don't overwrite" concern.
+    -- Popularity counters and artwork are just SoundCloud's own live data,
+    -- refreshed on every rescrape like any other column here — unlike a
+    -- favorite (see the `favorites` table), there's no "don't overwrite" concern.
     playback_count = EXCLUDED.playback_count,
     likes_count = EXCLUDED.likes_count,
+    artwork_url = EXCLUDED.artwork_url,
     source_url = EXCLUDED.source_url,
     lake_object_key = EXCLUDED.lake_object_key,
     scraped_at = EXCLUDED.scraped_at
 """
 
 _INSERT_NO_URL_SQL = """
-INSERT INTO tracks (artist, title, genre, url, downloadable, playback_count, likes_count, source_url, lake_object_key, scraped_at)
-VALUES (%(artist)s, %(title)s, %(genre)s, %(url)s, %(downloadable)s, %(playback_count)s, %(likes_count)s, %(source_url)s, %(lake_object_key)s, %(scraped_at)s)
+INSERT INTO tracks (artist, title, genre, url, downloadable, playback_count, likes_count, artwork_url, source_url, lake_object_key, scraped_at)
+VALUES (%(artist)s, %(title)s, %(genre)s, %(url)s, %(downloadable)s, %(playback_count)s, %(likes_count)s, %(artwork_url)s, %(source_url)s, %(lake_object_key)s, %(scraped_at)s)
 """
 
 
@@ -84,7 +85,7 @@ SORT_OPTIONS = tuple(_ORDER_BY)
 # list_tracks() falls back to _COUNT_SQL only in that case.
 _LIST_SQL_BY_SORT = {
     key: f"""
-SELECT tracks.id, artist, title, genre, url, downloadable, playback_count, likes_count,
+SELECT tracks.id, artist, title, genre, url, downloadable, playback_count, likes_count, artwork_url,
        (f.track_id IS NOT NULL) AS favorited, source_url, scraped_at,
        count(*) OVER() AS total
 {_FROM}
@@ -234,6 +235,7 @@ def load_tracks(
             "downloadable": bool(t.get("downloadable")),
             "playback_count": t.get("playback_count"),
             "likes_count": t.get("likes_count"),
+            "artwork_url": t.get("artwork_url"),
             "source_url": source_url,
             "lake_object_key": lake_object_key,
             "scraped_at": scraped_at,

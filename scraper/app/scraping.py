@@ -63,6 +63,22 @@ def _canonical_url(url: str | None) -> str | None:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
+# SoundCloud's artwork/avatar CDN urls end in a size token before the
+# extension (e.g. "...-large.jpg", "...-t50x50.jpg") that you can swap for a
+# bigger one — same file, no separate upload. Hydration defaults to a small
+# one (`large` is only 100x100); requesting a bigger one up front costs
+# nothing since we only ever store/hotlink the url, never fetch the bytes
+# ourselves (see the artwork policy note in CLAUDE.md).
+_ARTWORK_SIZE = "t500x500"
+_ARTWORK_SIZE_RE = re.compile(r"-(?:large|small|t\d+x\d+)(\.\w+)$")
+
+
+def _upsize_artwork(url: str | None) -> str | None:
+    if not url:
+        return None
+    return _ARTWORK_SIZE_RE.sub(rf"-{_ARTWORK_SIZE}\1", url) if _ARTWORK_SIZE_RE.search(url) else url
+
+
 def _parse_cookie_header(raw: str) -> list[dict]:
     """Parses a raw `name=value; name2=value2` cookie header (the kind you'd
     copy from a browser's DevTools) into Playwright's cookie dict format."""
@@ -178,6 +194,11 @@ def _track_from_hydration(track: dict) -> dict:
         # hydration enrichment fills them in below.
         "playback_count": track.get("playback_count"),
         "likes_count": track.get("likes_count"),
+        # The track's own artwork, falling back to the uploader's avatar when
+        # a track has none of its own — matches SoundCloud's own UI, and
+        # means a track never ends up with no image at all just because the
+        # uploader didn't bother setting per-track art.
+        "artwork_url": _upsize_artwork(track.get("artwork_url") or (track.get("user") or {}).get("avatar_url")),
     }
 
 
@@ -208,7 +229,11 @@ def _hydration_profile_owner(hydration: list | None) -> dict | None:
     user = next((e.get("data") for e in hydration if e.get("hydratable") == "user"), None)
     if not user or not user.get("permalink"):
         return None
-    return {"permalink": user["permalink"], "username": user.get("username") or user["permalink"]}
+    return {
+        "permalink": user["permalink"],
+        "username": user.get("username") or user["permalink"],
+        "avatar_url": _upsize_artwork(user.get("avatar_url")),
+    }
 
 
 def _parse_dom(html: str) -> list[dict]:
@@ -246,6 +271,7 @@ def _parse_dom(html: str) -> list[dict]:
                 "downloadable": False,  # DOM has no signal for this — only hydration enrichment sets it true
                 "playback_count": None,  # ditto — only hydration enrichment (below) fills these in
                 "likes_count": None,
+                "artwork_url": None,
             }
         )
     return records
@@ -279,6 +305,7 @@ def parse_html(html: str, hydration: list | None, source_url: str) -> list[dict]
             record["downloadable"] = enrichment["downloadable"]
             record["playback_count"] = enrichment["playback_count"]
             record["likes_count"] = enrichment["likes_count"]
+            record["artwork_url"] = enrichment["artwork_url"]
         elif not record.get("artist"):
             # No per-track username in the DOM and no hydration entry for this
             # track (e.g. a profile/stream page — see _hydration_profile_owner).
@@ -288,6 +315,11 @@ def parse_html(html: str, hydration: list | None, source_url: str) -> list[dict]
             owner_permalink = urlsplit(record["url"]).path.strip("/").split("/")[0] if record["url"] else None
             if profile_owner and owner_permalink == profile_owner["permalink"]:
                 record["artist"] = profile_owner["username"]
+                # Profile/stream pages carry no per-track artwork at all (same
+                # gap as genre) — the uploader's own avatar is the best
+                # available "artist graphic" for these, same fallback
+                # _track_from_hydration uses for a track with no custom art.
+                record["artwork_url"] = profile_owner["avatar_url"]
             else:
                 record["artist"] = "Unknown Artist"
 
