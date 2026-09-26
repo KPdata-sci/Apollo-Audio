@@ -5,14 +5,14 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from . import auth, lake, playlists, warehouse
+from . import auth, jobs, lake, playlists, warehouse
 from .logging_config import configure_logging, request_id_var
 from .models import (
     DiscoveredPlaylists,
@@ -22,6 +22,8 @@ from .models import (
     LoginResponse,
     MeResponse,
     PlaylistEntry,
+    ScrapeJobAccepted,
+    ScrapeJobStatus,
     ScrapeRequest,
     ScrapeResult,
     TracksPage,
@@ -76,6 +78,7 @@ async def lifespan(app: FastAPI):
         )
     logger.info("Startup complete — lake backend ready")
     yield
+    warehouse.pool.close()
 
 
 app = FastAPI(
@@ -207,47 +210,95 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+_LOGIN_REQUIRED_DETAIL = (
+    "SoundCloud says this page requires being logged in as its owner. "
+    "Set APOLLO_SOUNDCLOUD_COOKIES in your .env to your own session "
+    "cookies to try scraping it (see .env.example)."
+)
+
+
+async def _run_scrape_job(job_id: str, url: str) -> None:
+    """The actual scrape, run via FastAPI's BackgroundTasks (see the endpoint
+    below) rather than a raw asyncio.create_task — this makes it complete as
+    part of the same request's ASGI lifecycle (correct production semantics:
+    the 202 response still goes out immediately, the work just happens right
+    after) and, usefully, makes it testable: TestClient runs background
+    tasks to completion before a test's client.post(...) call returns, so
+    tests never need to manually wait or poll for this to finish."""
+    jobs.set_running(job_id)
+    try:
+        result = await scrape_and_store(url)
+    except DisallowedHostError:
+        # Unreachable via this endpoint today (the caller already validated
+        # the host before ever creating this job) — kept as a real handler
+        # rather than an assumption, since scrape_and_store is shared
+        # plumbing other callers could reach without that same pre-check.
+        jobs.set_error(job_id, 422, "Only soundcloud.com URLs are allowed.")
+        return
+    except LoginRequiredError:
+        jobs.set_error(job_id, 422, _LOGIN_REQUIRED_DETAIL)
+        return
+    except FetchError as exc:
+        logger.exception("Failed to fetch %s", url)
+        jobs.set_error(job_id, 502, f"Failed to fetch page: {exc}")
+        return
+    except LakeWriteError:
+        logger.exception("Failed to write raw scrape to the lake for %s", url)
+        jobs.set_error(job_id, 502, "Failed to write scrape result to the data lake")
+        return
+    jobs.set_done(job_id, result)
+
+
 @app.post(
     "/scrape",
-    response_model=ScrapeResult,
+    response_model=ScrapeJobAccepted,
+    status_code=202,
     tags=["scrape"],
-    summary="Scrape a SoundCloud playlist, set, or profile",
+    summary="Start scraping a SoundCloud playlist, set, or profile",
     dependencies=[Depends(require_api_key)],
 )
 @limiter.limit("10/minute")
-async def scrape(request: Request, payload: ScrapeRequest) -> ScrapeResult:
-    """Fetches the given SoundCloud URL with a headless browser, scrolls it to
+async def scrape(request: Request, payload: ScrapeRequest, background_tasks: BackgroundTasks) -> ScrapeJobAccepted:
+    """Starts a scrape and returns immediately — this used to block the
+    caller for however long the headless browser took (up to ~60s); now it
+    hands back a `job_id` right away and the work happens in the background.
+    Poll `GET /api/scrape/jobs/{job_id}` for the result.
+
+    Fetches the given SoundCloud URL with a headless browser, scrolls it to
     trigger SoundCloud's own lazy-loading, extracts the track list (title,
     artist, genre, url, downloadable), lands the raw result in the data lake,
     then upserts it into the warehouse `tracks` table (deduped by track url).
 
     Works on playlist/set pages and user profile pages. Pages that require
     being logged in as a specific SoundCloud account (e.g. a personal
-    "Discover Weekly") will fail with a 422 unless `APOLLO_SOUNDCLOUD_COOKIES`
-    is configured — see .env.example.
+    "Discover Weekly") will fail (via the job's `error`) unless
+    `APOLLO_SOUNDCLOUD_COOKIES` is configured — see .env.example.
     """
     url = str(payload.url)
-    try:
-        result = await scrape_and_store(url)
-    except DisallowedHostError as exc:
-        raise HTTPException(status_code=422, detail="Only soundcloud.com URLs are allowed.") from exc
-    except LoginRequiredError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "SoundCloud says this page requires being logged in as its owner. "
-                "Set APOLLO_SOUNDCLOUD_COOKIES in your .env to your own session "
-                "cookies to try scraping it (see .env.example)."
-            ),
-        ) from exc
-    except FetchError as exc:
-        logger.exception("Failed to fetch %s", url)
-        raise HTTPException(status_code=502, detail=f"Failed to fetch page: {exc}") from exc
-    except LakeWriteError as exc:
-        logger.exception("Failed to write raw scrape to the lake for %s", url)
-        raise HTTPException(status_code=502, detail="Failed to write scrape result to the data lake") from exc
+    # Fails synchronously and immediately for an obviously-bad request — no
+    # job created for a URL that was never going anywhere.
+    _require_soundcloud_host(url)
 
-    return ScrapeResult(**result)
+    job_id = jobs.create_job(url)
+    background_tasks.add_task(_run_scrape_job, job_id, url)
+    return ScrapeJobAccepted(job_id=job_id, status="queued")
+
+
+@app.get(
+    "/api/scrape/jobs/{job_id}",
+    response_model=ScrapeJobStatus,
+    tags=["scrape"],
+    summary="Check a scrape job's status/result",
+)
+def get_scrape_job(job_id: str) -> ScrapeJobStatus:
+    """Poll this after `POST /scrape` until `status` is `done` (see `result`,
+    the same shape `POST /scrape` used to return directly) or `error` (see
+    `error.status_code`/`error.detail`, the same status/detail that endpoint
+    used to raise directly as an HTTPException)."""
+    job = jobs.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"No scrape job with id {job_id}")
+    return ScrapeJobStatus(**job)
 
 
 @app.get(

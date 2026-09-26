@@ -49,15 +49,27 @@ Rebuild after changing `scraper/` code: `docker compose up -d --build api`. Afte
 
 ## Architecture
 
-**Pipeline**: `POST /scrape` → Playwright fetches + scrolls the page →
-`parse_html()` extracts tracks → `lake.put_raw_scrape()` writes immutable
-timestamped JSON (durable, replayable record) → `warehouse.load_tracks()`
-upserts into Postgres `tracks`, deduped on track `url` (not `artist`+`title`+`url`
-— artist attribution can legitimately improve between scrapes, so it must not
-be part of the conflict key or re-scrapes create duplicates instead of updating).
-This exact sequence lives in `pipeline.py::scrape_and_store()`, shared by the
-HTTP endpoint and `ingest.py` (see below) — don't duplicate it in a third
+**Pipeline**: Playwright fetches + scrolls the page → `parse_html()` extracts
+tracks → `lake.put_raw_scrape()` writes immutable timestamped JSON (durable,
+replayable record) → `warehouse.load_tracks()` upserts into Postgres
+`tracks`, deduped on track `url` (not `artist`+`title`+`url` — artist
+attribution can legitimately improve between scrapes, so it must not be part
+of the conflict key or re-scrapes create duplicates instead of updating).
+This exact sequence lives in `pipeline.py::scrape_and_store()`, shared by
+`POST /scrape` and `ingest.py` (see below) — don't duplicate it in a third
 place if you add another entry point.
+
+`POST /scrape` itself is submit-and-poll, not synchronous: it creates an
+in-memory job (`jobs.py` — a plain dict is enough since this app is pinned
+to 1 replica, `api.tf`), runs the actual scrape via FastAPI's
+`BackgroundTasks` (not a raw `asyncio.create_task` — this both matches
+production semantics correctly and keeps it testable, since `TestClient`
+runs background tasks to completion before a test's `client.post(...)`
+returns), and returns `202 {job_id}` immediately. `GET
+/api/scrape/jobs/{job_id}` is polled for the result — see `docs/API.md`.
+`ingest.py` and `refresh_metadata.py` bypass this whole layer entirely,
+calling `pipeline.py` directly (they're not driven by an HTTP client waiting
+on a response, so there's nothing to avoid blocking).
 
 **Scheduled ingest** (`ingest.py`): re-runs `scrape_and_store()` against a
 fixed, hand-configured URL list (`APOLLO_INGEST_URLS`) instead of one ad-hoc
@@ -68,6 +80,17 @@ section for why that distinction matters for SoundCloud ToS/courtesy. Runs
 via `docker compose run --rm api python -m app.ingest` locally, or a
 Kubernetes `CronJob` (`infra/terraform-k8s/ingest-cronjob.tf`) on a schedule.
 One bad URL logs and moves on rather than aborting the batch.
+
+**Cheap metadata refresh** (`refresh_metadata.py`): a lighter sibling to
+ingest — refreshes `playback_count`/`likes_count`/`artwork_url` on existing
+tracks without a full rescrape, by fetching a track's own page instead of
+re-scraping whatever playlist it came from (see `scraping.py`'s
+`fetch_track_metadata`/`_hydration_single_track` — a track's own page
+hydrates it as a top-level `hydratable: "sound"` entry, not nested under a
+`"playlist"` entry). Processes a bounded, oldest-refreshed-first batch
+(`APOLLO_METADATA_REFRESH_BATCH`, default 50) per run, on its own more
+frequent `CronJob` (`refresh-metadata-cronjob.tf`, every 6h by default) —
+see `docs/SCALING.md`.
 
 **The non-obvious core of `scraping.py`**: SoundCloud's SSR payload
 (`window.__sc_hydration`, read from the static HTML) only fully hydrates the
@@ -165,6 +188,16 @@ otherwise 500. `/api/stats` groups genres by `lower(btrim(genre))` and leaves
 out blanks and `#`-hashtag spam. Every genre it returns must round-trip as
 `/api/tracks?genre=` with the same count. `tests/test_warehouse_integration.py`
 checks this read-only against a real DB, and skips when none is reachable.
+
+Every function here goes through a module-level `psycopg_pool.ConnectionPool`
+(`pool`, opens itself at import time) rather than a fresh `psycopg.connect()`
+per call — deliberately not opened via `main.py`'s `lifespan()`, since this
+module has other entry points (`create_user.py`, the integration tests) that
+never run that lifespan at all and would otherwise need to remember to open
+it themselves. `pool.connection()`'s context manager commits/rolls back on
+exit the same way a plain `psycopg.connect()` one does (verified — there's no
+separate `conn.commit()` needed, and one there would just be a harmless
+no-op).
 
 **Popularity, artwork, and favorites**: `playback_count`/`likes_count`/
 `artwork_url` all come from the same hydration state as `genre`/`downloadable`

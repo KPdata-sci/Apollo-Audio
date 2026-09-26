@@ -36,6 +36,15 @@ resource "kubernetes_deployment" "api" {
         labels = { app = "api" }
       }
       spec {
+        # fs_group makes Kubernetes chown the mounted PVC to this GID the
+        # first time it's mounted — the standard k8s-native fix for a
+        # non-root container writing to a volume that was created (and thus
+        # owned by root) before this container ever ran, without a manual
+        # initContainer. Matches the scraper image's own `pwuser` (uid/gid
+        # 1000, verified) that the Dockerfile now runs as.
+        security_context {
+          fs_group = 1000
+        }
         container {
           name  = "api"
           image = var.scraper_image
@@ -45,6 +54,11 @@ resource "kubernetes_deployment" "api" {
           # which would make the kubelet try (and fail) to re-pull
           # "docker.io/library/..." from the real Docker Hub on every restart.
           image_pull_policy = "Never"
+
+          security_context {
+            run_as_user  = 1000
+            run_as_group = 1000
+          }
 
           env {
             name  = "APOLLO_LAKE_PATH"

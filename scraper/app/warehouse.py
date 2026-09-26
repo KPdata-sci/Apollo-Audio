@@ -3,10 +3,21 @@ from datetime import datetime
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from .settings import settings
 
 logger = logging.getLogger("apollo.warehouse")
+
+# Opens itself in the background at import time (its default behavior) —
+# deliberately not `open=False` + an explicit open() in main.py's lifespan,
+# because this module has other entry points besides the FastAPI app
+# (create_user.py, the tests that call these functions directly against a
+# real DB) that never run that lifespan at all; every one of them gets a
+# working pool for free this way instead of needing to remember to open it.
+# Every connection the pool hands out already has row_factory=dict_row, so
+# callers below never pass it themselves.
+pool = ConnectionPool(settings.warehouse_dsn, kwargs={"row_factory": dict_row}, open=True)
 
 _UPSERT_SQL = """
 INSERT INTO tracks (artist, title, genre, url, downloadable, playback_count, likes_count, artwork_url, source_url, lake_object_key, scraped_at)
@@ -133,7 +144,7 @@ def list_tracks(
         "offset": offset,
     }
 
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(list_sql, params)
             rows = cur.fetchall()
@@ -203,7 +214,7 @@ FROM tracks
 
 def get_stats(genre_limit: int = 40, source_limit: int = 100) -> dict:
     """Warehouse overview for GET /api/stats — see main.py for the shape."""
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(_TOTALS_SQL)
             totals = cur.fetchone()
@@ -255,13 +266,12 @@ def load_tracks(
 
     # executemany batches these over the wire instead of one round trip per
     # track — a 200-track playlist was 200 sequential execute() calls before.
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         with conn.cursor() as cur:
             if with_url:
                 cur.executemany(_UPSERT_SQL, with_url)
             if without_url:
                 cur.executemany(_INSERT_NO_URL_SQL, without_url)
-        conn.commit()
 
     logger.debug(
         "load_tracks: upserted %d row(s) for %s (%d had no url, inserted as-is)",
@@ -285,13 +295,12 @@ def add_favorite(user_id: int, track_id: int) -> bool:
     whether this call was the one that did it. Returns False when no track
     with this id exists, so the caller can turn that into a 404 rather than
     silently favoriting nothing."""
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(_TRACK_EXISTS_SQL, {"track_id": track_id})
             if cur.fetchone() is None:
                 return False
             cur.execute(_ADD_FAVORITE_SQL, {"user_id": user_id, "track_id": track_id})
-        conn.commit()
     logger.debug("add_favorite(user_id=%d, track_id=%d)", user_id, track_id)
     return True
 
@@ -300,13 +309,12 @@ def remove_favorite(user_id: int, track_id: int) -> bool:
     """Un-favorites a track for this user. Same idempotent shape as
     add_favorite: removing a favorite that was never set is a no-op, not an
     error. Returns False only when no track with this id exists at all."""
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(_TRACK_EXISTS_SQL, {"track_id": track_id})
             if cur.fetchone() is None:
                 return False
             cur.execute(_REMOVE_FAVORITE_SQL, {"user_id": user_id, "track_id": track_id})
-        conn.commit()
     logger.debug("remove_favorite(user_id=%d, track_id=%d)", user_id, track_id)
     return True
 
@@ -319,7 +327,7 @@ _FAVORITES_COUNT_SQL = "SELECT count(*) AS n FROM favorites WHERE user_id = %(us
 def get_user_by_username(username: str) -> dict | None:
     """Row includes password_hash — callers verify it (see app/auth.py) and
     must never put it in a response body or log line."""
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         row = conn.execute(_GET_USER_BY_USERNAME_SQL, {"username": username}).fetchone()
     return row
 
@@ -329,15 +337,51 @@ def insert_user(username: str, password_hash: str) -> int:
     (see CLAUDE.md for why). Raises psycopg.errors.UniqueViolation for a
     username that's already taken; the caller turns that into a clear CLI
     error rather than a stack trace."""
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(_INSERT_USER_SQL, {"username": username, "password_hash": password_hash})
             user_id = cur.fetchone()["id"]
-        conn.commit()
     logger.info("Created user %r (id=%d)", username, user_id)
     return user_id
 
 
 def count_favorites(user_id: int) -> int:
-    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+    with pool.connection() as conn:
         return conn.execute(_FAVORITES_COUNT_SQL, {"user_id": user_id}).fetchone()["n"]
+
+
+_TRACKS_DUE_FOR_METADATA_REFRESH_SQL = """
+SELECT url FROM tracks
+WHERE url IS NOT NULL
+ORDER BY metadata_refreshed_at ASC NULLS FIRST
+LIMIT %(limit)s
+"""
+_UPDATE_TRACK_METADATA_SQL = """
+UPDATE tracks
+SET playback_count = %(playback_count)s,
+    likes_count = %(likes_count)s,
+    artwork_url = %(artwork_url)s,
+    metadata_refreshed_at = now()
+WHERE url = %(url)s
+"""
+
+
+def tracks_due_for_metadata_refresh(limit: int) -> list[str]:
+    """Urls ordered oldest-refreshed-first (never-refreshed tracks sort
+    first) — a bounded batch per call so one CronJob run stays quick, and the
+    whole table cycles through gradually across runs rather than one run
+    trying to refresh everything (see app/refresh_metadata.py)."""
+    with pool.connection() as conn:
+        rows = conn.execute(_TRACKS_DUE_FOR_METADATA_REFRESH_SQL, {"limit": limit}).fetchall()
+    return [r["url"] for r in rows]
+
+
+def update_track_metadata(url: str, playback_count: int | None, likes_count: int | None, artwork_url: str | None) -> None:
+    """Targeted update for the cheap metadata-refresh path (pipeline.py::
+    refresh_track_metadata) — unlike load_tracks' upsert, this never touches
+    lake_object_key/source_url/scraped_at, since a metadata refresh isn't a
+    rescrape of the track's source and shouldn't look like one."""
+    with pool.connection() as conn:
+        conn.execute(_UPDATE_TRACK_METADATA_SQL, {
+            "url": url, "playback_count": playback_count, "likes_count": likes_count, "artwork_url": artwork_url,
+        })

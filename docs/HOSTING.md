@@ -203,14 +203,21 @@ lighter deterrent rather than a full account system, on purpose.
   will silently pick up whatever's newest on your next `terraform apply` /
   image pull — pin it to a specific version like the other images already are
   (`postgres:16-alpine`, `nginx:1.27-alpine`).
-- **Non-root containers**: the scraper image runs as root (inherited from the
-  Playwright base image) — the image does ship a `pwuser` non-root user, but
-  switching to it needs the `/data/lake` and `/data/logs` volume permissions
-  worked out first (the PVC is currently root-owned by default), so this
-  wasn't changed as part of this pass to avoid breaking the running app
-  untested. Worth doing as a follow-up: add `RUN chown -R pwuser /data` at
-  build time (or an `initContainer` that `chown`s the mounted volume) and
-  `USER pwuser` in `scraper/Dockerfile`.
+- **Non-root containers — done.** `scraper/Dockerfile` now runs as the image's
+  own `pwuser` (uid/gid 1000; verified Firefox launches fine under it, no
+  sandbox flags needed). The volume-ownership problem this was blocked on is
+  handled by `fs_group = 1000` in `api.tf`'s pod `security_context` —
+  Kubernetes re-chowns a mounted PVC's contents to that group on every mount
+  (not just first creation), so it fixes files an earlier root-owned pod
+  already wrote there, not just new ones. **Migrating an existing
+  deployment** (this one included) hits a real one-time snag the first time
+  the non-root image runs against data an old root-owned container created:
+  the k8s pod remount handles the PVC automatically, but a local
+  `docker compose` bind mount (`./data/lake`, `./logs`) gets no such
+  automatic fix — an old root-owned `apollo.log` or lake subdirectory tree
+  blocks the new non-root process with `PermissionError`/"Could not open log
+  directory", surfaced exactly like that during this change. Fix once with:
+  `docker run --rm -v "$PWD/data/lake:/data/lake" -v "$PWD/logs:/logs" busybox chown -R 1000:1000 /data/lake /logs`.
 - **`NetworkPolicy` isn't real protection here**: Docker Desktop's
   Kubernetes (and k3s's default Flannel CNI) don't enforce `NetworkPolicy`
   objects out of the box, so adding one would look like a control without

@@ -26,6 +26,13 @@ resource "kubernetes_cron_job_v1" "ingest" {
           }
           spec {
             restart_policy = "Never"
+            # Matches api.tf's Deployment: this Job's pod writes to the same
+            # shared PVC, so it needs the same fs_group fix for pre-existing
+            # (previously root-owned) files there — same reasoning, see the
+            # comment on api.tf's security_context.
+            security_context {
+              fs_group = 1000
+            }
 
             container {
               name  = "ingest"

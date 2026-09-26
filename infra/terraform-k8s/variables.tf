@@ -64,6 +64,18 @@ variable "ingest_schedule" {
   default     = "0 3 * * *"
 }
 
+variable "refresh_metadata_schedule" {
+  description = "Standard cron expression for how often the metadata-refresh CronJob runs (scraper/app/refresh_metadata.py — cheap playback_count/likes_count/artwork_url refresh, no full rescrape). Default is every 6 hours; each run is capped at metadata_refresh_batch tracks, so more frequent runs just cycle through the table faster rather than doing more work per run."
+  type        = string
+  default     = "0 */6 * * *"
+}
+
+variable "metadata_refresh_batch" {
+  description = "How many existing tracks (oldest-refreshed-first) one metadata-refresh run updates. Bounded so a frequent CronJob run stays quick."
+  type        = number
+  default     = 50
+}
+
 variable "postgres_user" {
   type    = string
   default = "apollo"

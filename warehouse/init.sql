@@ -39,6 +39,13 @@ ALTER TABLE tracks ADD COLUMN IF NOT EXISTS likes_count BIGINT;
 -- counters above.
 ALTER TABLE tracks ADD COLUMN IF NOT EXISTS artwork_url VARCHAR(1024);
 
+-- When this track's playback_count/likes_count/artwork_url were last
+-- refreshed via the cheap single-track path (app/refresh_metadata.py),
+-- separate from `scraped_at` (a full scrape/rescrape) since they mean
+-- different things — a track can have its metadata refreshed many times
+-- between full rescrapes. Null for every track until the first refresh run.
+ALTER TABLE tracks ADD COLUMN IF NOT EXISTS metadata_refreshed_at TIMESTAMPTZ;
+
 -- A track's own popularity counters are fine to overwrite on every rescrape
 -- (they're just SoundCloud's live numbers) — but a favorite is a decision a
 -- person made in this app, so it lives in its own table rather than a column

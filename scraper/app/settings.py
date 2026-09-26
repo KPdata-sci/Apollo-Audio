@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     # own via APOLLO_INGEST_URLS, e.g. picked from the playlists.py catalog.
     ingest_urls: str = ""
 
+    # Cheap metadata-only refresh (scraper/app/refresh_metadata.py) — how many
+    # existing tracks (oldest-refreshed-first) one run refreshes
+    # playback_count/likes_count/artwork_url for. Bounded per run so a
+    # frequent CronJob stays quick; the whole table cycles through gradually
+    # across runs rather than one run trying to do everything at once.
+    metadata_refresh_batch: int = 50
+
     class Config:
         env_prefix = "APOLLO_"
 
