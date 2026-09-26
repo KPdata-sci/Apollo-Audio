@@ -40,6 +40,28 @@ from .models import PlaylistEntry
 #
 # (~20-40s per page.) Static integrity checks (https, soundcloud.com host, no
 # duplicates, valid PlaylistEntry) live in tests/test_playlists.py.
+#
+# Added 2026-09-26: three new genres — "Violin & Strings", "Baroque &
+# Classical Masters" and "Film Score & Soundtrack" — verified the same way
+# with the real scraper (all >= 15 tracks). These deliberately don't overlap
+# with "Classical & Piano" above, which stays piano-focused. Sources: André
+# Rieu's and Classical Strings' (Sue Aston) own official accounts for violin/
+# strings; Nikolaus Harnoncourt (a baroque/period-instrument specialist
+# conductor), Academy of St Martin in the Fields (the ensemble that helped
+# revive Baroque performance practice in England) and a Bach catalog account
+# for Baroque & Classical Masters; Hans Zimmer's own official account, Silva
+# Screen Records (home to the Doctor Who/Sherlock soundtracks) and WaterTower
+# Music (Warner Bros.' in-house score label) for Film Score & Soundtrack.
+# Several of these accounts (Harnoncourt, Academy of St Martin in the Fields,
+# the Bach account, Hans Zimmer, WaterTower Music, Lindsey Stirling) don't
+# organize their uploads into /sets/ playlists at all — their catalog is the
+# profile itself — so those are profile entries per the existing convention
+# (see the DnB Allstars entry above). Hans Zimmer's account in particular was
+# cross-checked against his real social presence before being trusted: it
+# posts recent (weeks-old) score work and links out to https://x.com/RealHansZimmer
+# and https://www.facebook.com/hanszimmer/, both of which read as his genuine
+# accounts — an alternate soundcloud.com/hanszimmer profile exists too but is
+# dormant (2 tracks, 14 years old) and wasn't used.
 
 _WEEKLY_CHART = "SoundCloud's weekly trending chart for this genre — the track list changes every week."
 
@@ -184,6 +206,53 @@ CATALOG: dict[str, list[PlaylistEntry]] = {
         _p("Emerging Country: Porch Swing", "https://soundcloud.com/soundcloud-scenes/sets/porch-swing-emerging-country"),
         _p("New Era Folk", "https://soundcloud.com/soundcloud-stories/sets/new-era-folk"),
         _p("Trending Folk", "https://soundcloud.com/trending-music-us/sets/folk", note=_WEEKLY_CHART),
+    ],
+    "Violin & Strings": [
+        _p("André Rieu: The Complete Collection", "https://soundcloud.com/andre-rieu-official/sets/andr-rieu-o-complete"),
+        _p("André Rieu: Wedding Music", "https://soundcloud.com/andre-rieu-official/sets/andr-rieu-o-wedding"),
+        _p("Classical Strings: The String Quartet", "https://soundcloud.com/classicalstrings/sets/classical-strings-the-string"),
+        _p("Classical Strings: Arrangements by Sue Aston", "https://soundcloud.com/classicalstrings/sets/string-arrangement-by-sue"),
+        _p(
+            "Lindsey Stirling",
+            "https://soundcloud.com/lindseystomp",
+            note="A profile, not a playlist: her own official account (electric violin/dance, "
+            "linked from LindseyStirling.com) — scrapes latest uploads, no per-track genre tags.",
+        ),
+    ],
+    "Baroque & Classical Masters": [
+        _p(
+            "Nikolaus Harnoncourt",
+            "https://soundcloud.com/nikolaus-harnoncourt",
+            note="A profile, not a playlist: a baroque/period-instrument specialist conductor's full "
+            "upload catalog (linked to his official website, Facebook and Spotify) — no per-track genre tags.",
+        ),
+        _p(
+            "Academy of St Martin in the Fields",
+            "https://soundcloud.com/academy-of-st-martin-in-the-fields-chamber-ensemble",
+            note="A profile, not a playlist: the chamber orchestra that helped revive Baroque performance "
+            "practice in England — scrapes latest uploads, no per-track genre tags.",
+        ),
+        _p(
+            "Johann Sebastian Bach",
+            "https://soundcloud.com/johann-sebastian-bach-official",
+            note="A profile, not a playlist: a large catalog account of Bach recordings — scrapes latest "
+            "uploads, no per-track genre tags.",
+        ),
+    ],
+    "Film Score & Soundtrack": [
+        _p(
+            "Hans Zimmer",
+            "https://soundcloud.com/hans-zimmer-official",
+            note="A profile, not a playlist: Hans Zimmer's own official account (cross-checked against his "
+            "real @RealHansZimmer/Facebook accounts) — scrapes latest score uploads, no per-track genre tags.",
+        ),
+        _p("Silva Screen Records: Film Soundtracks", "https://soundcloud.com/silvascreen/sets/original-film-soundtracks"),
+        _p(
+            "WaterTower Music",
+            "https://soundcloud.com/watertowermusic",
+            note="A profile, not a playlist: Warner Bros.' in-house film/TV score label — scrapes latest "
+            "uploads, no per-track genre tags.",
+        ),
     ],
 }
 
