@@ -494,6 +494,7 @@
     text-shadow: 0 1px 2px rgba(0,0,0,.25);
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
   }
+  .cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .cover-hover { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.4); opacity: 0; transition: opacity var(--dur-1) ease; }
   .cover-hover .i { fill: #fff; stroke: none; width: 18px; height: 18px; }
   .eq { position: absolute; inset: 0; display: none; align-items: flex-end; justify-content: center; gap: 3px; padding: 12px 11px; background: linear-gradient(135deg, var(--accent), #f0386b); }
@@ -1248,7 +1249,7 @@
      filtering and switching views. Official SoundCloud embed only. -->
 <section id="player-dock" class="dock" aria-label="Now playing" hidden>
   <div class="dock-head">
-    <div class="dock-eq" aria-hidden="true"><div class="eq"><span></span><span></span><span></span></div></div>
+    <div class="dock-eq" aria-hidden="true"><img id="dock-art" class="cover-img" alt="" hidden onerror="this.hidden=true"><div class="eq"><span></span><span></span><span></span></div></div>
     <div class="dock-text">
       <div class="dock-label" id="dock-label">Loading player…</div>
       <div class="dock-title" id="dock-title"></div>
@@ -2082,8 +2083,15 @@ function trackHtml(t, i) {
   const favBtn = t.id != null
     ? `<button type="button" class="btn btn-ghost btn-icon btn-sm t-fav${fav ? " is-fav" : ""}" data-fav="${t.id}" data-fk="fav:${fk}" aria-pressed="${fav}" aria-label="${escapeHtml(favLabel)}">${icon(fav ? "heart-fill" : "heart", "i-sm")}</button>`
     : "";
+  // Hotlinked straight from SoundCloud's own CDN — same policy as playback
+  // and downloads, this app never fetches/rehosts SoundCloud's media itself
+  // (see CLAUDE.md). onerror removes a broken image rather than leaving a
+  // blank box: the colored-initials placeholder underneath shows through.
+  const artworkImg = t.artwork_url
+    ? `<img class="cover-img" src="${escapeHtml(t.artwork_url)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
+    : "";
   return `<li class="track${pb.current ? " is-current" : ""}${pb.playing ? " is-playing" : ""}" data-idx="${i}" style="--i:${Math.min(i, 14)}">
-    <span class="cover" style="--h:${hue(artist + "|" + title)}" data-cover aria-hidden="true">${escapeHtml(initials(artist))}
+    <span class="cover" style="--h:${hue(artist + "|" + title)}" data-cover aria-hidden="true">${escapeHtml(initials(artist))}${artworkImg}
       <span class="cover-hover">${icon("play")}</span>
       <span class="eq"><span></span><span></span><span></span></span>
     </span>
@@ -2274,6 +2282,7 @@ const dockFrame = $("#dock-frame");
 const dockMin = $("#dock-min");
 const dockLabel = $("#dock-label");
 const dockFavBtn = $("#dock-fav");
+const dockArt = $("#dock-art");
 const PLAYER_LABELS = {
   loading: "Loading player…",
   ready: "Press ▶ in the player to start",
@@ -2355,6 +2364,8 @@ function togglePlay(t) {
   $("#dock-title").textContent = t.title || "Untitled";
   $("#dock-artist").textContent = t.artist || "Unknown artist";
   paintFavButton(dockFavBtn, Boolean(t.favorited), t.title);
+  if (t.artwork_url) { dockArt.src = t.artwork_url; dockArt.hidden = false; }
+  else { dockArt.removeAttribute("src"); dockArt.hidden = true; }
   dock.hidden = false;
   setMinimized(false);
   setPlayerStatus("loading");

@@ -53,7 +53,8 @@ Takes ~10-60 seconds — it drives a real headless browser and scrolls the page 
       "url": "https://soundcloud.com/...",
       "downloadable": false,
       "playback_count": 14555,
-      "likes_count": 560
+      "likes_count": 560,
+      "artwork_url": "https://i1.sndcdn.com/artworks-<id>-t500x500.jpg"
     }
   ]
 }
@@ -70,6 +71,8 @@ Takes ~10-60 seconds — it drives a real headless browser and scrolls the page 
 `downloadable` is only ever `true` when SoundCloud's own data says the uploader enabled downloads for that specific track — it is never inferred. The front end uses it to decide whether to show a download link at all; that link always points at the track's own SoundCloud page (this API never serves or proxies audio files).
 
 `playback_count`/`likes_count` are SoundCloud's own counters, read from the same hydration state as `genre`/`downloadable` — so they share the same limitation: a playlist/set page carries them for every track, but a profile/stream page's hydration has no per-track data at all, so both come back `null` there (same as `genre` already does).
+
+`artwork_url` is always a SoundCloud CDN url (or `null`, only when nothing at all was available), never a file this API hosts — it's the track's own artwork when SoundCloud has one, falling back to the uploader's avatar when it doesn't (matching SoundCloud's own UI, and how a profile/stream page track always gets *some* image). Same policy boundary as playback and downloads: this API hotlinks, it never downloads or rehosts SoundCloud's media itself.
 
 ---
 
@@ -103,6 +106,7 @@ Filters combine, and `total` is the filtered count. A NUL character in `search`,
       "downloadable": false,
       "playback_count": 14555,
       "likes_count": 560,
+      "artwork_url": "https://i1.sndcdn.com/artworks-<id>-t500x500.jpg",
       "favorited": false,
       "source_url": "https://soundcloud.com/<artist>/sets/<playlist>",
       "scraped_at": "2026-09-25T12:02:19.202248Z"
@@ -203,12 +207,13 @@ Returns the curated `{genre: [{name, url, note}]}` catalog behind the front end'
 
 ---
 
-## Playback and downloads
+## Playback, downloads, and artwork
 
-This API never streams, stores, or proxies audio itself:
+This API never streams, stores, or proxies SoundCloud's own media itself:
 
 - **Playback** is done client-side via SoundCloud's own official embeddable player (`w.soundcloud.com/player`), pointed at the track's `url`. Audio is streamed directly from SoundCloud's own infrastructure, one track at a time (starting a new one stops whatever was playing) — there's no batch/background playback.
 - **Downloads** are a link to the track's own SoundCloud page, shown only when `downloadable` is `true`. Whether the actual download button appears there, and whether it works, is entirely SoundCloud's and the uploader's own choice — this project does not fetch, cache, or redistribute audio files under any circumstance.
+- **Artwork** (`artwork_url`) is likewise never downloaded or rehosted — the front end hotlinks it directly from SoundCloud's own CDN (`i1.sndcdn.com`). This API only ever stores the *url*, not image bytes.
 
 ---
 

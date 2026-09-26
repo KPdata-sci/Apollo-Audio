@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from app.scraping import discover_playlists, parse_html
+from app.scraping import _upsize_artwork, discover_playlists, parse_html
 
 PROFILE_SETS_HTML = """
 <html><body>
@@ -69,6 +69,7 @@ def test_parse_playlist_markup_no_hydration():
         "downloadable": False,
         "playback_count": None,
         "likes_count": None,
+        "artwork_url": None,
     }
     # Missing username/genre tags fall back cleanly instead of raising.
     assert tracks[1]["artist"] == "Unknown Artist"
@@ -76,6 +77,7 @@ def test_parse_playlist_markup_no_hydration():
     assert tracks[1]["downloadable"] is False
     assert tracks[1]["playback_count"] is None
     assert tracks[1]["likes_count"] is None
+    assert tracks[1]["artwork_url"] is None
 
 
 def test_parse_stream_markup_fallback_selector():
@@ -103,6 +105,7 @@ def test_hydration_enriches_dom_parsed_tracks():
                     "downloadable": True,
                     "playback_count": 4200,
                     "likes_count": 137,
+                    "artwork_url": "https://i1.sndcdn.com/artworks-abc123-0-large.jpg",
                 }
             ]
         }
@@ -120,6 +123,9 @@ def test_hydration_enriches_dom_parsed_tracks():
         "downloadable": True,
         "playback_count": 4200,
         "likes_count": 137,
+        # Upsized from "-large" (SoundCloud's default, only 100x100) to a
+        # bigger CDN-served size — same file, just a bigger crop request.
+        "artwork_url": "https://i1.sndcdn.com/artworks-abc123-0-t500x500.jpg",
     }
 
 
@@ -158,6 +164,7 @@ def test_falls_back_to_hydration_only_when_dom_has_no_tracks():
             "downloadable": False,
             "playback_count": None,
             "likes_count": None,
+            "artwork_url": None,
         }
     ]
 
@@ -168,7 +175,14 @@ def test_profile_page_attributes_tracks_to_the_verified_owner():
     # confirms they belong to that account get attributed to them; a repost
     # from someone else's URL does not.
     hydration = [
-        {"hydratable": "user", "data": {"permalink": "someuser", "username": "Some Artist"}},
+        {
+            "hydratable": "user",
+            "data": {
+                "permalink": "someuser",
+                "username": "Some Artist",
+                "avatar_url": "https://i1.sndcdn.com/avatars-xyz-large.jpg",
+            },
+        },
     ]
     html = """
     <li class="trackList__item">
@@ -182,7 +196,42 @@ def test_profile_page_attributes_tracks_to_the_verified_owner():
     tracks = parse_html(html, hydration=hydration, source_url="https://soundcloud.com/someuser")
 
     assert tracks[0]["artist"] == "Some Artist"
+    # No per-track artwork exists on a profile/stream page at all — the
+    # owner's own avatar is the best available "artist graphic" fallback.
+    assert tracks[0]["artwork_url"] == "https://i1.sndcdn.com/avatars-xyz-t500x500.jpg"
     assert tracks[1]["artist"] == "Unknown Artist"
+    assert tracks[1]["artwork_url"] is None
+
+
+def test_track_artwork_falls_back_to_uploader_avatar():
+    # A track can have no custom artwork of its own — SoundCloud's own UI
+    # falls back to the uploader's avatar in that case, and so do we.
+    hydration = _hydration(
+        {
+            "tracks": [
+                {
+                    "title": "Track Two",
+                    "permalink_url": "https://soundcloud.com/artist-two/track-two",
+                    "user": {"username": "Real Artist Two", "avatar_url": "https://i1.sndcdn.com/avatars-a-large.jpg"},
+                    "artwork_url": None,
+                }
+            ]
+        }
+    )
+
+    tracks = parse_html(PLAYLIST_HTML, hydration=hydration, source_url="https://soundcloud.com/x/sets/y")
+
+    assert tracks[1]["artwork_url"] == "https://i1.sndcdn.com/avatars-a-t500x500.jpg"
+
+
+def test_upsize_artwork():
+    assert _upsize_artwork(None) is None
+    assert _upsize_artwork("") is None
+    assert _upsize_artwork("https://i1.sndcdn.com/artworks-abc-0-large.jpg") == "https://i1.sndcdn.com/artworks-abc-0-t500x500.jpg"
+    assert _upsize_artwork("https://i1.sndcdn.com/artworks-abc-0-t200x200.jpg") == "https://i1.sndcdn.com/artworks-abc-0-t500x500.jpg"
+    # Anything that doesn't match the known "-<size>.<ext>" suffix pattern is
+    # returned unchanged rather than mangled.
+    assert _upsize_artwork("https://example.com/no-size-token.jpg") == "https://example.com/no-size-token.jpg"
 
 
 @patch("app.scraping.fetch_html", new_callable=AsyncMock)
