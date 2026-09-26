@@ -62,9 +62,14 @@ _ORDER_BY = {
 SORT_OPTIONS = tuple(_ORDER_BY)
 
 # Pre-built once at import from constants only (no user input involved).
+# count(*) OVER() rides along with the page query so the common case (rows
+# come back) is one round trip instead of two identical WHERE evaluations;
+# an empty page (offset past the end) has no row to carry a total on, so
+# list_tracks() falls back to _COUNT_SQL only in that case.
 _LIST_SQL_BY_SORT = {
     key: f"""
-SELECT id, artist, title, genre, url, downloadable, source_url, scraped_at
+SELECT id, artist, title, genre, url, downloadable, source_url, scraped_at,
+       count(*) OVER() AS total
 FROM tracks
 {_WHERE}
 ORDER BY {order_by}
@@ -105,8 +110,13 @@ def list_tracks(
         with conn.cursor() as cur:
             cur.execute(list_sql, params)
             rows = cur.fetchall()
-            cur.execute(_COUNT_SQL, params)
-            total = cur.fetchone()["total"]
+            if rows:
+                total = rows[0].pop("total")
+                for row in rows[1:]:
+                    del row["total"]
+            else:
+                cur.execute(_COUNT_SQL, params)
+                total = cur.fetchone()["total"]
 
     logger.debug(
         "list_tracks(search=%r, genre=%r, source_url=%r, sort=%s, limit=%d, offset=%d) -> %d row(s) of %d total",
@@ -207,12 +217,18 @@ def load_tracks(
         for t in tracks
     ]
 
-    no_url_count = sum(1 for r in rows if not r["url"])
+    with_url = [r for r in rows if r["url"]]
+    without_url = [r for r in rows if not r["url"]]
+    no_url_count = len(without_url)
 
+    # executemany batches these over the wire instead of one round trip per
+    # track — a 200-track playlist was 200 sequential execute() calls before.
     with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
-            for row in rows:
-                cur.execute(_UPSERT_SQL if row["url"] else _INSERT_NO_URL_SQL, row)
+            if with_url:
+                cur.executemany(_UPSERT_SQL, with_url)
+            if without_url:
+                cur.executemany(_INSERT_NO_URL_SQL, without_url)
         conn.commit()
 
     logger.debug(
