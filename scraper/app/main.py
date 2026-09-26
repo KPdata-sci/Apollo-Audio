@@ -43,6 +43,17 @@ def _require_soundcloud_host(url: str) -> None:
         raise HTTPException(status_code=422, detail="Only soundcloud.com URLs are allowed.")
 
 
+def _reject_nul(**params: str) -> None:
+    """Postgres rejects NUL in text values outright, so without this a stray
+    %00 in any free-text query param surfaces as an unhandled 500 from
+    psycopg instead of a client error. Named as a validator (not an inline
+    per-endpoint loop) so a future free-text param picks it up by adding one
+    keyword argument here, not by remembering to re-derive this check."""
+    for name, value in params.items():
+        if "\x00" in value:
+            raise HTTPException(status_code=422, detail=f"`{name}` must not contain NUL characters.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     lake.ensure_bucket()
@@ -89,8 +100,11 @@ async def etag_cache(request: Request, call_next):
         return response
 
     body = b"".join([chunk async for chunk in response.body_iterator])
-    # Weak because GZipMiddleware may re-encode the body on the way out.
-    etag = f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
+    # This still runs the full handler (including any DB query) on every
+    # request — a 304 only saves the response bytes on the wire, not the
+    # server-side work, so blake2b (cache validation, not security) is
+    # plenty; weak because GZipMiddleware may re-encode the body on the way out.
+    etag = f'W/"{hashlib.blake2b(body, digest_size=16).hexdigest()}"'
     headers = {"ETag": etag, "Cache-Control": _CACHE_POLICIES.get(request.url.path, "no-cache")}
     if etag in request.headers.get("if-none-match", ""):
         return Response(status_code=304, headers=headers)
@@ -230,11 +244,7 @@ def list_tracks(
     - `limit` is clamped to 1-200; `total` is the count after all filters.
     - A NUL character in `search`, `genre`, or `source_url` is a 422.
     """
-    # Postgres rejects NUL in text values outright, so without this a stray
-    # %00 surfaces as an unhandled 500 from psycopg instead of a client error.
-    for name, value in (("search", search), ("genre", genre), ("source_url", source_url)):
-        if "\x00" in value:
-            raise HTTPException(status_code=422, detail=f"`{name}` must not contain NUL characters.")
+    _reject_nul(search=search, genre=genre, source_url=source_url)
 
     limit = max(1, min(limit, 200))
     offset = max(0, offset)

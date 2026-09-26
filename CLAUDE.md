@@ -143,11 +143,13 @@ assumed. On iOS, autoplay in the iframe is blocked, so the player shows
 playback is one track per explicit tap, by policy.
 
 **Playlist catalog** (`playlists.py`): a curated, verified list of public
-SoundCloud playlists across ~19 genres, mostly from SoundCloud's own editorial
-accounts (populated 2026-09-25 at the owner's request — it used to ship
-empty). Every entry was checked with the real `fetch_html`/`parse_html`, and
-the comment block in the file shows how to re-verify. SoundCloud playlists do
-vanish or change, so re-verify before trusting it long-term.
+SoundCloud playlists across 22 genres (populated 2026-09-25 at the owner's
+request — it used to ship empty; extended 2026-09-26 with violin/strings,
+baroque/classical and film-score genres), mostly from SoundCloud's own
+editorial accounts. Every entry was checked with the real
+`fetch_html`/`parse_html`, and the comment block in the file shows how to
+re-verify. SoundCloud playlists do vanish or change, so re-verify before
+trusting it long-term.
 `tests/test_playlists.py` guards its shape: soundcloud.com only, no
 duplicates, profiles carry a `note`. It's read fresh on every
 `GET /api/playlists` call.
@@ -170,7 +172,18 @@ up a brand-new empty Postgres volume instead of reusing the existing one.
 `terraform-aws/` is an unfinished, non-functional AWS sketch (kept for
 possible future reference only). `terraform-k8s/` is real and
 `terraform validate`-checked against the Kubernetes provider, for deploying
-to a k3s host — but never `terraform apply`'d anywhere yet.
+to a k3s host — including a `CronJob` for scheduled ingest
+(`infra/terraform-k8s/ingest-cronjob.tf`, see "Scheduled ingest" above).
+
+**CI** (`.github/workflows/ci.yml`): runs on every push/PR — the test suite
+against a real `postgres:16-alpine` service container (not mocked, so
+`test_warehouse_integration.py`'s DB-dependent tests actually run), `terraform
+fmt`/`validate` for `terraform-k8s` (`terraform-aws` is checked too but
+`continue-on-error: true`, since its own README documents it as an unfinished,
+known-broken sketch), and a build of both Docker images as a smoke test (no
+push). CD — actually rolling this out to the k3s VM — stays a manual,
+documented step (see `docs/CI_CD.md`) because GitHub-hosted runners can't
+reach a Tailscale-only host.
 
 ## Known rough edges (see README "Known limitations" for the full list)
 
@@ -181,21 +194,26 @@ to a k3s host — but never `terraform apply`'d anywhere yet.
   `docs/PUBLIC_ACCESS_DESIGN.md` before exposing it anywhere.
 - `docs/CRAWLER_DESIGN.md` documents a planned multi-page crawler/index —
   only single-profile playlist discovery (`discover_playlists()`) is built.
+- `docs/EDGE_SECURITY.md`'s top finding is unresolved: the k3s VM's bridged
+  networking exposes the NodePorts (30800/30880) to every device on the LAN,
+  not just Tailscale peers — Tailscale ACLs only govern the tailnet
+  interface, they don't firewall the LAN-facing one.
 
-## Filesystem quirks if working from this repo's actual location
+## Developing from Windows (this repo's actual location)
 
-This project lives on an exFAT-formatted USB drive. macOS shadows every file
-there with a `._*` AppleDouble sidecar carrying xattrs exFAT can't store
-natively. These have caused real failures, not just clutter: `docker build`
-aborts outright if one exists in the build context (`operation not
-permitted`). If a build fails with an xattr error, run:
-```bash
-find . -name '._*' -delete
-```
-`scraper/.dockerignore` excludes `._*` from the build context, but files
-created *after* the last build can still trip the context-scanning step
-before ignore rules apply — deleting them is the actual fix, `.dockerignore`
-alone isn't sufficient.
+This repo is developed from a Windows PC (`E:\ApolloAudio`, an internal NTFS
+drive — not a Mac). Two Windows-specific things that have actually caused
+failures here, not just style points:
+- **Git Bash / MSYS path mangling**: Git Bash auto-converts arguments that
+  look like absolute POSIX paths before handing them to the process, which
+  silently corrupts `docker run ... -w /app ...`-style container paths (they
+  get rewritten to a Windows path). Prefix such commands with
+  `MSYS_NO_PATHCONV=1`, e.g.
+  `MSYS_NO_PATHCONV=1 docker run --rm -v "E:\ApolloAudio\scraper:/app" -w /app apollo-api:latest ...`.
+- **Two shells, two syntaxes**: commands here run under either Git Bash
+  (POSIX `sh`) or PowerShell — they are not interchangeable (`$VAR` vs
+  `$env:VAR`, `/dev/null` vs `$null`, quoting rules). Match the syntax to
+  whichever shell is actually invoking the command.
 
 The `testing/`, `0.0.1av/`, `DB/`, and `iterm/` directories are pre-rewrite
 drafts and one unrelated third-party clone — superseded by `scraper/` and

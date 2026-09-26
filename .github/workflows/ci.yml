@@ -1,0 +1,138 @@
+name: CI
+
+# Runs on every push and PR to any branch. See docs/CI_CD.md for what this
+# workflow covers and why CD (actually deploying to the k3s VM) is a manual,
+# documented process rather than a job here.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Python test suite, including the Postgres-backed integration tests in
+  # tests/test_warehouse_integration.py. Those are normally skipped when
+  # APOLLO_WAREHOUSE_DSN isn't reachable (see that file's docstring) — here
+  # we point it at a real postgres:16-alpine service container so they run
+  # for real instead of silently no-op'ing.
+  # ---------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: apollo
+          POSTGRES_PASSWORD: apollo
+          POSTGRES_DB: apollo
+        ports:
+          # The job runs directly on the runner (not inside a container), so
+          # the service is reached via localhost on the published port, not
+          # via the service name "postgres" as it would be from another
+          # container on the same Compose network.
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apollo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Matches scraper/Dockerfile's base image
+          # (mcr.microsoft.com/playwright/python:v1.47.0-jammy ships 3.10.12).
+          python-version: "3.10"
+          cache: "pip"
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r scraper/requirements.txt pytest httpx
+
+      - name: Apply warehouse schema
+        env:
+          PGPASSWORD: apollo
+        run: |
+          psql -h localhost -U apollo -d apollo -f warehouse/init.sql
+
+      - name: Run test suite
+        env:
+          # No hydration/Playwright browser needed here: tests mock
+          # app.scraping.fetch_html rather than driving a real browser
+          # (see scraper/tests/test_scraping.py, test_api.py, test_ingest.py).
+          APOLLO_WAREHOUSE_DSN: postgresql://apollo:apollo@localhost:5432/apollo
+        run: |
+          cd scraper
+          python -m pytest tests -q
+
+  # ---------------------------------------------------------------------
+  # Terraform validation. infra/terraform-k8s/ is the real, apply-able (if
+  # unapplied) tree and must validate cleanly. infra/terraform-aws/ is an
+  # explicitly unfinished sketch (its own README lists known-broken bits:
+  # mismatched variable names between variables.tf and main.tf/networking.tf,
+  # pre-0.12 tag syntax, etc.) that was never meant to `terraform validate`
+  # today, so it's checked and reported but not allowed to fail the job.
+  # ---------------------------------------------------------------------
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: terraform fmt -check (terraform-k8s)
+        working-directory: infra/terraform-k8s
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (terraform-k8s)
+        working-directory: infra/terraform-k8s
+        run: terraform init -backend=false
+
+      - name: terraform validate (terraform-k8s)
+        working-directory: infra/terraform-k8s
+        run: terraform validate
+
+      - name: terraform fmt/validate (terraform-aws, informational only)
+        working-directory: infra/terraform-aws
+        # Not gated: infra/terraform-aws/README.md documents this tree as an
+        # unfinished, non-functional sketch kept for future reference, with
+        # known issues (mismatched variables, pre-Terraform-0.12 tag syntax)
+        # that would fail validate today. We still run it so the output is
+        # visible in CI logs, but a failure here doesn't fail the build.
+        continue-on-error: true
+        run: |
+          terraform fmt -check -recursive || true
+          terraform init -backend=false || true
+          terraform validate || true
+
+  # ---------------------------------------------------------------------
+  # Build both Docker images as a smoke test — no push anywhere, no secrets.
+  # ---------------------------------------------------------------------
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build api image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./scraper
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

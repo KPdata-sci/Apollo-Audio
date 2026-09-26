@@ -2317,12 +2317,13 @@ const SCRAPE_STAGES = [
 ];
 
 function isActive(j) { return Boolean(j) && (j.status === "queued" || j.status === "running" || j.status === "waiting"); }
+function isRunningOrWaiting(j) { return j.status === "running" || j.status === "waiting"; }
 function latestJobFor(url) {
   const n = normUrl(url);
   for (let i = jobs.length - 1; i >= 0; i--) if (normUrl(jobs[i].url) === n) return jobs[i];
   return null;
 }
-function currentJob() { return jobs.find(j => j.status === "running" || j.status === "waiting") || null; }
+function currentJob() { return jobs.find(isRunningOrWaiting) || null; }
 function queuedAhead(job) {
   return jobs.filter(j => j.status === "queued" && j.id < job.id).length + (currentJob() ? 1 : 0);
 }
@@ -2467,7 +2468,7 @@ function groupStats(g) {
     else if (j.status === "error") s.failed++;
     else if (j.status === "cancelled") s.cancelled++;
     else s.active++;
-    if (j.status === "running" || j.status === "waiting") s.current = j;
+    if (isRunningOrWaiting(j)) s.current = j;
   });
   s.finished = s.done + s.failed + s.cancelled;
   return s;
