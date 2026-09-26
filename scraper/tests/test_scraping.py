@@ -67,11 +67,15 @@ def test_parse_playlist_markup_no_hydration():
         "genre": "Drum & Bass",
         "url": "https://soundcloud.com/artist-one/track-one",
         "downloadable": False,
+        "playback_count": None,
+        "likes_count": None,
     }
     # Missing username/genre tags fall back cleanly instead of raising.
     assert tracks[1]["artist"] == "Unknown Artist"
     assert tracks[1]["genre"] is None
     assert tracks[1]["downloadable"] is False
+    assert tracks[1]["playback_count"] is None
+    assert tracks[1]["likes_count"] is None
 
 
 def test_parse_stream_markup_fallback_selector():
@@ -97,6 +101,8 @@ def test_hydration_enriches_dom_parsed_tracks():
                     "permalink_url": "https://soundcloud.com/artist-two/track-two",
                     "user": {"username": "Real Artist Two"},
                     "downloadable": True,
+                    "playback_count": 4200,
+                    "likes_count": 137,
                 }
             ]
         }
@@ -105,12 +111,15 @@ def test_hydration_enriches_dom_parsed_tracks():
     tracks = parse_html(PLAYLIST_HTML, hydration=hydration, source_url="https://soundcloud.com/x/sets/y")
 
     assert tracks[0]["artist"] == "Artist One"  # untouched — no hydration entry for this url
+    assert tracks[0]["playback_count"] is None
     assert tracks[1] == {
         "title": "Track Two",
         "artist": "Real Artist Two",
         "genre": "House",
         "url": "https://soundcloud.com/artist-two/track-two",
         "downloadable": True,
+        "playback_count": 4200,
+        "likes_count": 137,
     }
 
 
@@ -147,6 +156,8 @@ def test_falls_back_to_hydration_only_when_dom_has_no_tracks():
             "genre": "Drum & Bass",
             "url": "https://soundcloud.com/artist/hydrated-track",
             "downloadable": False,
+            "playback_count": None,
+            "likes_count": None,
         }
     ]
 

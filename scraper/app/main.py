@@ -17,6 +17,7 @@ from .logging_config import configure_logging, request_id_var
 from .models import (
     DiscoveredPlaylists,
     DiscoverPlaylistsRequest,
+    FavoriteResult,
     PlaylistEntry,
     ScrapeRequest,
     ScrapeResult,
@@ -230,7 +231,8 @@ def list_tracks(
     offset: int = 0,
     genre: str = "",
     source_url: str = "",
-    sort: Literal["recent", "artist", "title"] = "recent",
+    sort: Literal["recent", "artist", "title", "popular"] = "recent",
+    favorited_only: bool = False,
 ) -> TracksPage:
     """Paginated, searchable, filterable read of the `tracks` table.
 
@@ -239,8 +241,10 @@ def list_tracks(
     - `genre`: case-insensitive match on the trimmed genre; every `genre`
       value returned by GET /api/stats round-trips here. Empty = no filter.
     - `source_url`: exact match on the scraped page url. Empty = no filter.
-    - `sort`: `recent` (default, newest scrape first), `artist`, or `title`
-      (both A-Z, case-insensitive). Anything else is a 422.
+    - `sort`: `recent` (default, newest scrape first), `artist`, `title`
+      (both A-Z, case-insensitive), or `popular` (highest `playback_count`
+      first, tracks with none known sort last). Anything else is a 422.
+    - `favorited_only`: only tracks favorited via POST /api/tracks/{id}/favorite.
     - `limit` is clamped to 1-200; `total` is the count after all filters.
     - A NUL character in `search`, `genre`, or `source_url` is a 422.
     """
@@ -259,8 +263,42 @@ def list_tracks(
         genre=genre if genre.strip() else "",
         source_url=source_url.strip(),
         sort=sort,
+        favorited_only=favorited_only,
     )
     return TracksPage(items=rows, total=total, limit=limit, offset=offset)
+
+
+@app.post(
+    "/api/tracks/{track_id}/favorite",
+    response_model=FavoriteResult,
+    tags=["favorites"],
+    summary="Favorite a track",
+    dependencies=[Depends(require_api_key)],
+)
+def favorite_track(track_id: int) -> FavoriteResult:
+    """Adds `track_id` to the shared favorites list (this app has no user
+    accounts, so it's one list rather than per-person). Idempotent — favoriting
+    an already-favorited track just returns the same result. 404 if no track
+    with this id exists."""
+    if not warehouse.add_favorite(track_id):
+        raise HTTPException(status_code=404, detail=f"No track with id {track_id}")
+    return FavoriteResult(id=track_id, favorited=True)
+
+
+@app.delete(
+    "/api/tracks/{track_id}/favorite",
+    response_model=FavoriteResult,
+    tags=["favorites"],
+    summary="Un-favorite a track",
+    dependencies=[Depends(require_api_key)],
+)
+def unfavorite_track(track_id: int) -> FavoriteResult:
+    """Removes `track_id` from the shared favorites list. Idempotent — 404
+    only when no track with this id exists at all, not when it simply wasn't
+    favorited to begin with."""
+    if not warehouse.remove_favorite(track_id):
+        raise HTTPException(status_code=404, detail=f"No track with id {track_id}")
+    return FavoriteResult(id=track_id, favorited=False)
 
 
 @app.get(
@@ -272,7 +310,7 @@ def list_tracks(
 def warehouse_stats() -> WarehouseStats:
     """Read-only summary of the `tracks` table.
 
-    - `total_tracks`, `total_sources` (distinct `source_url`s), and
+    - `total_tracks`, `total_sources` (distinct `source_url`s), `total_favorites`, and
       `last_scraped_at` (null when the warehouse is empty).
     - `genres`: up to 40, grouped case-insensitively on the trimmed genre,
       null/blank excluded, sorted by count desc then name. The displayed

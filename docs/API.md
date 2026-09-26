@@ -8,11 +8,11 @@ Interactive docs (try-it-out, generated from the same code): `GET /docs` (Swagge
 
 **Caching**: successful `GET /api/*` JSON responses carry a weak `ETag`. `GET /api/playlists` is `Cache-Control: public, max-age=3600`, because the catalog only changes on redeploy. Everything else is `no-cache`: the browser revalidates on every load and gets a body-less `304` when nothing changed, so the data is never stale after a scrape. Responses over 1KB are gzipped when the client accepts it.
 
-**Auth**: `POST /scrape` and `POST /api/discover-playlists` require an
-`X-API-Key` header matching `APOLLO_API_KEY` *when that setting is
-non-empty* — it's empty (no auth) by default for local dev. `GET /api/tracks`
-and `GET /api/playlists` are never gated. See `docs/HOSTING.md` for what this
-does and doesn't protect against.
+**Auth**: `POST /scrape`, `POST /api/discover-playlists`, and the favorite
+endpoints below require an `X-API-Key` header matching `APOLLO_API_KEY` *when
+that setting is non-empty* — it's empty (no auth) by default for local dev.
+`GET /api/tracks`, `GET /api/stats`, and `GET /api/playlists` are never
+gated. See `docs/HOSTING.md` for what this does and doesn't protect against.
 
 ---
 
@@ -51,7 +51,9 @@ Takes ~10-60 seconds — it drives a real headless browser and scrolls the page 
       "artist": "...",
       "genre": "Drum & Bass",
       "url": "https://soundcloud.com/...",
-      "downloadable": false
+      "downloadable": false,
+      "playback_count": 14555,
+      "likes_count": 560
     }
   ]
 }
@@ -67,6 +69,8 @@ Takes ~10-60 seconds — it drives a real headless browser and scrolls the page 
 
 `downloadable` is only ever `true` when SoundCloud's own data says the uploader enabled downloads for that specific track — it is never inferred. The front end uses it to decide whether to show a download link at all; that link always points at the track's own SoundCloud page (this API never serves or proxies audio files).
 
+`playback_count`/`likes_count` are SoundCloud's own counters, read from the same hydration state as `genre`/`downloadable` — so they share the same limitation: a playlist/set page carries them for every track, but a profile/stream page's hydration has no per-track data at all, so both come back `null` there (same as `genre` already does).
+
 ---
 
 ## `GET /api/tracks`
@@ -79,7 +83,8 @@ Paginated, searchable read of everything currently in the warehouse.
 | `search` | `""` | Case-insensitive literal substring match against artist or title (`%` and `_` match themselves, not as wildcards). |
 | `genre` | `""` | Case- and surrounding-whitespace-insensitive exact match. Use a `genre` value from `GET /api/stats`. |
 | `source_url` | `""` | Exact match on the playlist/profile URL a track was scraped from. |
-| `sort` | `recent` | `recent` (newest scrape first), `artist`, or `title`. Anything else → `422`. |
+| `sort` | `recent` | `recent` (newest scrape first), `artist`, `title`, or `popular` (highest `playback_count` first; tracks with none known sort last, not excluded). Anything else → `422`. |
+| `favorited_only` | `false` | Only tracks favorited via `POST /api/tracks/{id}/favorite`. |
 | `limit` | `50` | Clamped to 1-200. |
 | `offset` | `0` | |
 
@@ -96,6 +101,9 @@ Filters combine, and `total` is the filtered count. A NUL character in `search`,
       "genre": "...",
       "url": "https://soundcloud.com/...",
       "downloadable": false,
+      "playback_count": 14555,
+      "likes_count": 560,
+      "favorited": false,
       "source_url": "https://soundcloud.com/<artist>/sets/<playlist>",
       "scraped_at": "2026-09-25T12:02:19.202248Z"
     }
@@ -105,6 +113,28 @@ Filters combine, and `total` is the filtered count. A NUL character in `search`,
   "offset": 0
 }
 ```
+
+---
+
+## `POST /api/tracks/{id}/favorite` · `DELETE /api/tracks/{id}/favorite`
+
+Adds or removes a track from the shared favorites list. There are no user
+accounts in this app (see `docs/HOSTING.md`/`CLAUDE.md`), so it's one shared
+list rather than per-person — consistent with the rest of the app's
+single-tenant design. Both are idempotent: favoriting an already-favorited
+track, or un-favoriting one that was never favorited, just returns the same
+result rather than erroring.
+
+**Response `200`**
+```json
+{"id": 1, "favorited": true}
+```
+
+**Errors**
+| Status | When |
+|---|---|
+| `401` | `APOLLO_API_KEY` is set and the request's `X-API-Key` header is missing or wrong. |
+| `404` | No track with this id exists. |
 
 ---
 
@@ -146,6 +176,7 @@ Headline numbers and filter facets for the library view. Read-only, no auth.
 {
   "total_tracks": 241,
   "total_sources": 4,
+  "total_favorites": 3,
   "last_scraped_at": "2026-09-25T17:22:00.445729Z",
   "genres": [{"genre": "Drum & Bass", "count": 32}],
   "sources": [{"source_url": "https://soundcloud.com/<user>/sets/<slug>", "track_count": 58, "last_scraped_at": "2026-09-25T17:22:00Z"}]

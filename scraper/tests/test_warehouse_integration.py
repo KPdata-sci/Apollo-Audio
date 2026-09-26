@@ -94,6 +94,10 @@ def test_each_sort_returns_rows_in_the_documented_order(sort):
     if sort == "recent":
         # scraped_at DESC, id DESC — both keys descending, so reverse a plain sort.
         expected = sorted(rows, key=lambda r: (r["scraped_at"], r["id"]), reverse=True)
+    elif sort == "popular":
+        # coalesce(playback_count, 0) DESC, id DESC — a track with no known
+        # count sorts as if it were 0, not last-by-nulls or excluded.
+        expected = sorted(rows, key=lambda r: (r["playback_count"] or 0, r["id"]), reverse=True)
     else:
         rank = _db_lower_ranks({r["artist"] for r in rows} | {r["title"] for r in rows})
         if sort == "artist":
@@ -102,6 +106,18 @@ def test_each_sort_returns_rows_in_the_documented_order(sort):
             key = lambda r: (rank[r["title"]], rank[r["artist"]], r["id"])  # noqa: E731
         expected = sorted(rows, key=key)
     assert [r["id"] for r in rows] == [r["id"] for r in expected], f"sort={sort} out of order"
+
+
+def test_favorited_only_filter_returns_only_favorited_rows():
+    rows, total = warehouse.list_tracks(favorited_only=True, limit=200)
+    assert all(r["favorited"] for r in rows)
+    assert total == len(rows) or total > 200
+
+
+def test_favorited_only_is_a_stricter_subset_of_unfiltered():
+    _, favorited_total = warehouse.list_tracks(favorited_only=True, limit=1)
+    _, everything_total = warehouse.list_tracks(limit=1)
+    assert favorited_total <= everything_total
 
 
 def test_search_metacharacters_match_literally():

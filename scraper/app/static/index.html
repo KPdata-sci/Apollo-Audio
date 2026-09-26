@@ -388,7 +388,7 @@
   /* ==========================================================================
      Library: stats
      ========================================================================== */
-  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); margin-bottom: var(--s-4); }
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s-3); margin-bottom: var(--s-4); }
   .stat { padding: var(--s-4) var(--s-5); position: relative; overflow: hidden; }
   .stat-label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-2xs); font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
   .stat-label .i { width: 14px; height: 14px; color: var(--accent-text); }
@@ -461,7 +461,7 @@
   .list-progress { position: absolute; left: 0; right: 0; top: 0; height: 2px; overflow: hidden; z-index: 2; }
   .list-progress::after { content: ""; position: absolute; top: 0; bottom: 0; width: 35%; background: var(--accent); animation: indeterminate 1s var(--ease-out) infinite; }
   .list-head {
-    display: grid; grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) 168px;
+    display: grid; grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) 200px;
     gap: var(--s-4); padding: var(--s-3) var(--s-4);
     font-size: var(--fs-2xs); font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3);
     border-bottom: 1px solid var(--border);
@@ -472,7 +472,7 @@
   .track {
     position: relative;
     display: grid;
-    grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) 168px;
+    grid-template-columns: 44px minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.2fr) 200px;
     grid-template-areas: "cover main genre source actions";
     align-items: center; gap: var(--s-4);
     padding: 10px var(--s-4);
@@ -510,6 +510,7 @@
   .t-main { grid-area: main; min-width: 0; }
   .t-title { display: block; font-weight: 620; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-base); }
   .t-artist { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-plays { display: block; font-size: var(--fs-xs); color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .t-meta { display: contents; }
   .t-genre { grid-area: genre; min-width: 0; }
   .t-source { grid-area: source; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); line-height: 1.35; }
@@ -519,6 +520,8 @@
   .t-play { min-width: 82px; }
   .t-play .i { fill: currentColor; stroke: none; width: 14px; height: 14px; }
   .t-play.is-current { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .t-fav { color: var(--text-3); }
+  .is-fav { color: var(--danger); }
   mark { background: color-mix(in srgb, var(--accent) 26%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 
   .track.skeleton-row { animation: none; }
@@ -811,6 +814,7 @@
     /* Keep active states intact on hover (these rules sit later in the cascade). */
     .track.is-current:hover { background: var(--accent-soft); }
     .t-play.is-current:hover:not(:disabled) { background: var(--accent-hover); color: var(--accent-ink); border-color: transparent; }
+    .is-fav:hover:not(:disabled) { color: var(--danger); }
     .chip[aria-pressed="true"]:hover { border-color: var(--accent); color: var(--accent-text); }
     .genre-tile[aria-pressed="true"]:hover { box-shadow: 0 0 0 1px var(--accent), var(--shadow-2); }
     .filters-toggle[aria-expanded="true"]:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft-2); }
@@ -892,7 +896,7 @@
 
     /* One compact overview strip instead of four tall cards. */
     .stats {
-      grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0;
+      grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0;
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
       box-shadow: var(--shadow-1); overflow: hidden;
     }
@@ -1051,6 +1055,8 @@
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.5 1.5"/><path d="M14 10.5a4.5 4.5 0 0 0-6.4-.4l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
   <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.1 6.1a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8" cy="8" r="1.4"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.3s-7.6-4.4-10-9C.4 7.7 1.8 4 5.4 3.4c2.3-.4 4.5.7 5.7 2.6l.9 1.4.9-1.4c1.2-1.9 3.4-3 5.7-2.6C22.2 4 23.6 7.7 22 11.3c-2.4 4.6-10 9-10 9z"/></symbol>
+  <symbol id="i-heart-fill" viewBox="0 0 24 24"><path d="M12 20.3s-7.6-4.4-10-9C.4 7.7 1.8 4 5.4 3.4c2.3-.4 4.5.7 5.7 2.6l.9 1.4.9-1.4c1.2-1.9 3.4-3 5.7-2.6C22.2 4 23.6 7.7 22 11.3c-2.4 4.6-10 9-10 9z" fill="currentColor" stroke="none"/></symbol>
 </svg>
 
 <header class="appbar">
@@ -1137,12 +1143,21 @@
               <option value="recent">Newest first</option>
               <option value="artist">Artist A–Z</option>
               <option value="title">Title A–Z</option>
+              <option value="popular">Most played</option>
             </select>
           </div>
         </div>
         <div class="genre-group" id="genre-group" hidden>
           <span class="field-label" id="genre-label">Genre</span>
           <div id="genre-chips" class="chips" role="group" aria-labelledby="genre-label"></div>
+        </div>
+        <div class="genre-group" id="favorites-group" hidden>
+          <span class="field-label" id="favorites-label">Favorites</span>
+          <div class="chips" role="group" aria-labelledby="favorites-label">
+            <button type="button" id="favorites-toggle" class="chip" aria-pressed="false">
+              <svg class="i i-sm" aria-hidden="true"><use href="#i-heart"/></svg><span class="chip-name">Favorites only</span>
+            </button>
+          </div>
         </div>
       </div>
       <div id="active-filters" class="active-filters" hidden></div>
@@ -1239,6 +1254,7 @@
       <div class="dock-title" id="dock-title"></div>
       <div class="dock-artist" id="dock-artist"></div>
     </div>
+    <button type="button" class="btn btn-ghost btn-icon btn-sm" id="dock-fav" aria-pressed="false" aria-label="Add to favorites"><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg></button>
     <button type="button" class="btn btn-ghost btn-icon btn-sm dock-min-btn" id="dock-min" aria-expanded="true" aria-controls="dock-body" aria-label="Collapse player"><svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button>
     <button type="button" class="btn btn-ghost btn-icon btn-sm" id="dock-close" aria-label="Stop and close player"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
@@ -1371,6 +1387,17 @@ function fmtClock(ms) {
 }
 function fmtNum(n) { return Number(n || 0).toLocaleString(); }
 function plural(n, one, many = one + "s") { return `${fmtNum(n)} ${n === 1 ? one : many}`; }
+// Compact play counts ("14.6K plays", "2.1M plays") — one decimal place under
+// 10 of the unit, none above (matches how most sites trim these), plain
+// fmtNum below 1000.
+function fmtCompactNum(n) {
+  const num = Number(n);
+  if (!isFinite(num)) return "0";
+  const abs = Math.abs(num);
+  if (abs >= 1e6) return (num / 1e6).toFixed(abs >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M";
+  if (abs >= 1e3) return (num / 1e3).toFixed(abs >= 1e4 ? 0 : 1).replace(/\.0$/, "") + "K";
+  return fmtNum(num);
+}
 function hue(str) {
   let h = 7;
   for (const ch of String(str || "")) h = (h * 31 + ch.codePointAt(0)) >>> 0;
@@ -1678,13 +1705,13 @@ $("#skip-link").addEventListener("click", e => { e.preventDefault(); $("#main").
    source_url, sort) shipped together, so a successful /api/stats response
    turns the overview + filter UI on; an older API (404) just hides them.
    ========================================================================== */
-const features = { stats: true, genre: false, source: false, sort: false };
+const features = { stats: true, genre: false, source: false, sort: false, favorites: false };
 
 /* ==========================================================================
    Library: state, stats, filters, tracks
    ========================================================================== */
 const state = {
-  search: "", genre: "", source: "", sort: "recent",
+  search: "", genre: "", source: "", sort: "recent", favoritesOnly: false,
   limit: 25, offset: 0, total: 0, items: [],
   loaded: false, pending: false, genresExpanded: false, filtersOpen: false,
 };
@@ -1698,6 +1725,7 @@ const filtersToggle = $("#filters-toggle");
 const genreChips = $("#genre-chips");
 const sourceSelect = $("#source-select");
 const sortSelect = $("#sort-select");
+const favoritesToggle = $("#favorites-toggle");
 const activeFiltersEl = $("#active-filters");
 const listCard = $("#list-card");
 const listHead = $("#list-head");
@@ -1720,7 +1748,7 @@ async function loadStats() {
     const first = !stats;
     const hadFilters = features.genre;
     stats = data;
-    features.genre = features.source = features.sort = true;
+    features.genre = features.source = features.sort = features.favorites = true;
     renderStats(first);
     refreshLibraryState();
     // Rows rendered before we knew filtering exists get clickable genre pills.
@@ -1763,6 +1791,11 @@ function renderStats(animate) {
       <div class="stat-sub">in your warehouse</div>
     </div>
     <div class="card stat">
+      <div class="stat-label">${icon("heart")}Favorites</div>
+      <div class="stat-value" data-num="${Number(stats.total_favorites) || 0}">${fmtNum(stats.total_favorites)}</div>
+      <div class="stat-sub">saved for later</div>
+    </div>
+    <div class="card stat">
       <div class="stat-label">${icon("layers")}Sources</div>
       <div class="stat-value" data-num="${Number(stats.total_sources) || 0}">${fmtNum(stats.total_sources)}</div>
       <div class="stat-sub" title="${escapeHtml(topSource ? topSource.source_url : "")}">${topSource ? `Biggest: ${escapeHtml(sourceLabel(topSource.source_url))}` : "playlists &amp; profiles"}</div>
@@ -1788,10 +1821,12 @@ function applyFeatureVisibility() {
   $("#genre-group").hidden = !(features.genre && stats && (stats.genres || []).some(g => g && g.genre));
   $("#source-field").hidden = !(features.source && stats && (stats.sources || []).length);
   $("#sort-field").hidden = !features.sort;
+  $("#favorites-group").hidden = !features.favorites;
   // Drop any filter state the server can't honour.
   if (!features.genre) state.genre = "";
   if (!features.source) state.source = "";
   if (!features.sort) state.sort = "recent";
+  if (!features.favorites) state.favoritesOnly = false;
 }
 const GENRES_COLLAPSED = 10;
 function renderFilters() {
@@ -1826,10 +1861,14 @@ function renderFilters() {
     sourceSelect.value = state.source;
   }
   sortSelect.value = state.sort;
+  if (features.favorites) {
+    favoritesToggle.setAttribute("aria-pressed", String(state.favoritesOnly));
+    favoritesToggle.innerHTML = `${icon(state.favoritesOnly ? "heart-fill" : "heart", "i-sm")}<span class="chip-name">Favorites only</span>`;
+  }
   renderActiveFilters();
 }
 function activeFilterCount() {
-  return (state.genre ? 1 : 0) + (state.source ? 1 : 0) + (state.sort !== "recent" ? 1 : 0);
+  return (state.genre ? 1 : 0) + (state.source ? 1 : 0) + (state.sort !== "recent" ? 1 : 0) + (state.favoritesOnly ? 1 : 0);
 }
 function renderActiveFilters() {
   const n = activeFilterCount();
@@ -1841,6 +1880,7 @@ function renderActiveFilters() {
   if (state.search.trim()) tags.push(`<button type="button" class="tag" data-clear="search" aria-label="Remove search filter ${escapeHtml(state.search.trim())}"><span>“${escapeHtml(state.search.trim())}”</span>${icon("x")}</button>`);
   if (state.genre) tags.push(`<button type="button" class="tag" data-clear="genre" aria-label="Remove genre filter ${escapeHtml(state.genre)}"><span>${escapeHtml(state.genre)}</span>${icon("x")}</button>`);
   if (state.source) tags.push(`<button type="button" class="tag" data-clear="source" aria-label="Remove source filter"><span>${escapeHtml(sourceLabel(state.source))}</span>${icon("x")}</button>`);
+  if (state.favoritesOnly) tags.push(`<button type="button" class="tag" data-clear="favorites" aria-label="Remove favorites filter"><span>Favorites</span>${icon("x")}</button>`);
   if (!tags.length) { activeFiltersEl.hidden = true; activeFiltersEl.innerHTML = ""; return; }
   activeFiltersEl.hidden = false;
   activeFiltersEl.innerHTML = `<span class="count">${state.loaded && !state.pending ? plural(state.total, "match", "matches") : `<span class="filtering"><span class="spinner" aria-hidden="true"></span>Filtering…</span>`}</span>${tags.join("")}
@@ -1850,6 +1890,7 @@ function clearFilters(which = "all") {
   if (which === "all" || which === "search") { state.search = ""; searchInput.value = ""; searchClear.hidden = true; }
   if (which === "all" || which === "genre") state.genre = "";
   if (which === "all" || which === "source") state.source = "";
+  if (which === "all" || which === "favorites") state.favoritesOnly = false;
   if (which === "all") state.sort = "recent";
   state.offset = 0;
   renderFilters();
@@ -1874,6 +1915,12 @@ genreChips.addEventListener("click", e => {
 });
 sourceSelect.addEventListener("change", () => { state.source = sourceSelect.value; state.offset = 0; renderActiveFilters(); loadTracks(); });
 sortSelect.addEventListener("change", () => { state.sort = sortSelect.value; state.offset = 0; renderActiveFilters(); loadTracks(); });
+favoritesToggle.addEventListener("click", () => {
+  state.favoritesOnly = !state.favoritesOnly;
+  state.offset = 0;
+  renderFilters();
+  loadTracks();
+});
 activeFiltersEl.addEventListener("click", e => {
   const b = e.target.closest("[data-clear]");
   if (!b) return;
@@ -1931,6 +1978,7 @@ async function loadTracks({ quiet = false } = {}) {
   if (features.genre && state.genre) params.set("genre", state.genre);
   if (features.source && state.source) params.set("source_url", state.source);
   if (features.sort && state.sort !== "recent") params.set("sort", state.sort);
+  if (features.favorites && state.favoritesOnly) params.set("favorited_only", "true");
   if (!quiet) { state.pending = true; renderActiveFilters(); }
   if (!state.loaded) {
     tableWrap.innerHTML = skeletonRows();
@@ -2024,18 +2072,28 @@ function trackHtml(t, i) {
   const dl = t.downloadable === true && url
     ? `<a class="btn btn-ghost btn-sm t-dl" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-fk="dl:${fk}" title="Opens the track's SoundCloud page — download only if the artist enabled it there" aria-label="Download ${escapeHtml(title)} on SoundCloud (opens the track's page)">${icon("download", "i-sm")}<span class="t-dl-label">Download</span></a>`
     : "";
+  // playback_count is null for tracks scraped from a profile/stream page
+  // (hydration doesn't cover those) — show nothing rather than "0 plays".
+  const plays = t.playback_count != null
+    ? `<div class="t-plays" title="${escapeHtml(fmtNum(t.playback_count))} plays">${fmtCompactNum(t.playback_count)} plays</div>`
+    : "";
+  const fav = Boolean(t.favorited);
+  const favLabel = `${fav ? "Remove" : "Add"} ${title} ${fav ? "from" : "to"} favorites`;
+  const favBtn = t.id != null
+    ? `<button type="button" class="btn btn-ghost btn-icon btn-sm t-fav${fav ? " is-fav" : ""}" data-fav="${t.id}" data-fk="fav:${fk}" aria-pressed="${fav}" aria-label="${escapeHtml(favLabel)}">${icon(fav ? "heart-fill" : "heart", "i-sm")}</button>`
+    : "";
   return `<li class="track${pb.current ? " is-current" : ""}${pb.playing ? " is-playing" : ""}" data-idx="${i}" style="--i:${Math.min(i, 14)}">
     <span class="cover" style="--h:${hue(artist + "|" + title)}" data-cover aria-hidden="true">${escapeHtml(initials(artist))}
       <span class="cover-hover">${icon("play")}</span>
       <span class="eq"><span></span><span></span><span></span></span>
     </span>
-    <div class="t-main">${titleHtml}<div class="t-artist">${highlight(artist, q)}</div></div>
+    <div class="t-main">${titleHtml}<div class="t-artist">${highlight(artist, q)}</div>${plays}</div>
     <div class="t-meta">
       <div class="t-genre">${genre}</div>
       <div class="t-source"><span class="src-name" title="${escapeHtml(t.source_url || "")}">${escapeHtml(src.name)}</span>
         <time data-ago datetime="${escapeHtml(t.scraped_at || "")}" title="Scraped ${escapeHtml(fmtDate(t.scraped_at))}">${escapeHtml(timeAgo(t.scraped_at))}</time></div>
     </div>
-    <div class="t-actions">${dl}${playBtn}</div>
+    <div class="t-actions">${favBtn}${dl}${playBtn}</div>
   </li>`;
 }
 
@@ -2047,7 +2105,7 @@ function renderTable(items) {
 
   if (items.length === 0) {
     listHead.hidden = true;
-    const filtered = state.search.trim() || state.genre || state.source;
+    const filtered = state.search.trim() || state.genre || state.source || state.favoritesOnly;
     tableWrap.innerHTML = filtered
       ? `<div class="state">
           <div class="state-icon">${icon("search", "i-lg")}</div>
@@ -2108,6 +2166,13 @@ function renderPager() {
 }
 
 tableWrap.addEventListener("click", e => {
+  const favBtn = e.target.closest("[data-fav]");
+  if (favBtn) {
+    const li = e.target.closest(".track");
+    const t = li && state.items[Number(li.dataset.idx)];
+    if (t) toggleFavorite(t);
+    return;
+  }
   const playBtn = e.target.closest("[data-play]");
   const cover = e.target.closest("[data-cover]");
   if (playBtn || cover) {
@@ -2122,6 +2187,59 @@ tableWrap.addEventListener("click", e => {
     announce(`Filtered to ${g.dataset.filterGenre}`);
   }
 });
+
+/* ==========================================================================
+   Favorites — POST/DELETE /api/tracks/{id}/favorite. Optimistic update,
+   reconciled with the server's response; reverted with the app's normal
+   error-toast convention on failure (404 = track no longer exists, a
+   network error, etc.).
+   ========================================================================== */
+const favoritePending = new Set();
+function paintFavButton(btn, favorited, title) {
+  if (!btn) return;
+  btn.classList.toggle("is-fav", favorited);
+  btn.setAttribute("aria-pressed", String(favorited));
+  btn.setAttribute("aria-label", `${favorited ? "Remove" : "Add"} ${title || "track"} ${favorited ? "from" : "to"} favorites`);
+  btn.innerHTML = icon(favorited ? "heart-fill" : "heart", btn.id === "dock-fav" ? "" : "i-sm");
+}
+function syncFavoriteButtons(t) {
+  $$(`[data-fav="${t.id}"]`, tableWrap).forEach(btn => paintFavButton(btn, Boolean(t.favorited), t.title));
+  if (player.track === t) paintFavButton(dockFavBtn, Boolean(t.favorited), t.title);
+}
+async function toggleFavorite(t) {
+  if (!t || t.id == null || favoritePending.has(t.id)) return;
+  const prev = Boolean(t.favorited);
+  const next = !prev;
+  favoritePending.add(t.id);
+  t.favorited = next;
+  syncFavoriteButtons(t);
+  try {
+    const res = await fetch(apiUrl(`/api/tracks/${t.id}/favorite`), {
+      method: next ? "POST" : "DELETE",
+      headers: { ...authHeaders() },
+    });
+    const body = await readBody(res);
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status, body });
+    t.favorited = typeof body.favorited === "boolean" ? body.favorited : next;
+    syncFavoriteButtons(t);
+    // Keep the stats header's Favorites count in sync without a full re-fetch.
+    if (t.favorited !== prev && stats && typeof stats.total_favorites === "number") {
+      stats.total_favorites += t.favorited ? 1 : -1;
+      renderStats(false);
+    }
+    if (state.favoritesOnly && !t.favorited) loadTracks({ quiet: true });
+  } catch (err) {
+    t.favorited = prev;
+    syncFavoriteButtons(t);
+    const e = err.status ? explainError(err.status, err.body, err) : explainError(0, {}, err);
+    toast({
+      kind: "error", title: e.title, message: e.message,
+      ...(e.action === "set-key" ? { actionLabel: "Set API key", onAction: openKeyDialog } : {}),
+    });
+  } finally {
+    favoritePending.delete(t.id);
+  }
+}
 
 // "12m ago" labels would drift apart (stat card vs rows) without this.
 setInterval(() => {
@@ -2155,6 +2273,7 @@ const dock = $("#player-dock");
 const dockFrame = $("#dock-frame");
 const dockMin = $("#dock-min");
 const dockLabel = $("#dock-label");
+const dockFavBtn = $("#dock-fav");
 const PLAYER_LABELS = {
   loading: "Loading player…",
   ready: "Press ▶ in the player to start",
@@ -2235,6 +2354,7 @@ function togglePlay(t) {
   dockFrame.appendChild(f);
   $("#dock-title").textContent = t.title || "Untitled";
   $("#dock-artist").textContent = t.artist || "Unknown artist";
+  paintFavButton(dockFavBtn, Boolean(t.favorited), t.title);
   dock.hidden = false;
   setMinimized(false);
   setPlayerStatus("loading");
@@ -2293,6 +2413,7 @@ function updateDockSpace() {
 }
 dockMin.addEventListener("click", () => setMinimized(!player.minimized));
 $("#dock-close").addEventListener("click", stopPlayback);
+dockFavBtn.addEventListener("click", () => { if (player.track) toggleFavorite(player.track); });
 if ("ResizeObserver" in window) new ResizeObserver(updateDockSpace).observe(dock);
 
 /* ==========================================================================

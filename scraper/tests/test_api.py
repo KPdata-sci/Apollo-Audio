@@ -64,7 +64,7 @@ def test_list_tracks_endpoint(mock_list_tracks):
     assert body["total"] == 1
     assert body["items"][0]["title"] == "Song"
     mock_list_tracks.assert_called_once_with(
-        search="song", limit=10, offset=0, genre="", source_url="", sort="recent"
+        search="song", limit=10, offset=0, genre="", source_url="", sort="recent", favorited_only=False
     )
 
 
@@ -92,6 +92,17 @@ def test_list_tracks_passes_filters_and_sort(mock_list_tracks):
         genre="Drum & Bass",
         source_url="https://soundcloud.com/a/sets/b",
         sort="artist",
+        favorited_only=False,
+    )
+
+
+@patch("app.main.warehouse.list_tracks", return_value=([], 0))
+def test_list_tracks_accepts_popular_sort_and_favorited_only(mock_list_tracks):
+    resp = client.get("/api/tracks", params={"sort": "popular", "favorited_only": "true"})
+
+    assert resp.status_code == 200
+    mock_list_tracks.assert_called_once_with(
+        search="", limit=50, offset=0, genre="", source_url="", sort="popular", favorited_only=True
     )
 
 
@@ -160,6 +171,7 @@ def test_stats_endpoint(mock_get_stats):
     mock_get_stats.return_value = {
         "total_tracks": 5,
         "total_sources": 2,
+        "total_favorites": 1,
         "last_scraped_at": "2026-09-25T17:22:00Z",
         "genres": [{"genre": "Drum & Bass", "count": 3}, {"genre": "Piano", "count": 2}],
         "sources": [
@@ -182,6 +194,7 @@ def test_stats_endpoint(mock_get_stats):
     body = resp.json()
     assert body["total_tracks"] == 5
     assert body["total_sources"] == 2
+    assert body["total_favorites"] == 1
     assert body["last_scraped_at"].startswith("2026-09-25T17:22:00")
     assert body["genres"][0] == {"genre": "Drum & Bass", "count": 3}
     assert [s["source_url"] for s in body["sources"]] == [
@@ -197,6 +210,7 @@ def test_stats_endpoint_empty_warehouse(mock_get_stats):
     mock_get_stats.return_value = {
         "total_tracks": 0,
         "total_sources": 0,
+        "total_favorites": 0,
         "last_scraped_at": None,
         "genres": [],
         "sources": [],
@@ -208,6 +222,7 @@ def test_stats_endpoint_empty_warehouse(mock_get_stats):
     assert resp.json() == {
         "total_tracks": 0,
         "total_sources": 0,
+        "total_favorites": 0,
         "last_scraped_at": None,
         "genres": [],
         "sources": [],
@@ -217,7 +232,7 @@ def test_stats_endpoint_empty_warehouse(mock_get_stats):
 @patch("app.main.warehouse.get_stats")
 def test_get_api_responses_revalidate_with_etag(mock_get_stats):
     mock_get_stats.return_value = {
-        "total_tracks": 0, "total_sources": 0, "last_scraped_at": None, "genres": [], "sources": [],
+        "total_tracks": 0, "total_sources": 0, "total_favorites": 0, "last_scraped_at": None, "genres": [], "sources": [],
     }
 
     first = client.get("/api/stats")
@@ -295,3 +310,59 @@ def test_discover_playlists_rejects_non_soundcloud_url():
 
     assert resp.status_code == 422
     assert "soundcloud.com" in resp.json()["detail"]
+
+
+@patch("app.main.warehouse.add_favorite", return_value=True)
+def test_favorite_track_endpoint(mock_add_favorite):
+    resp = client.post("/api/tracks/7/favorite")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"id": 7, "favorited": True}
+    mock_add_favorite.assert_called_once_with(7)
+
+
+@patch("app.main.warehouse.add_favorite", return_value=False)
+def test_favorite_track_endpoint_404_for_unknown_id(mock_add_favorite):
+    resp = client.post("/api/tracks/999999/favorite")
+
+    assert resp.status_code == 404
+
+
+@patch("app.main.warehouse.remove_favorite", return_value=True)
+def test_unfavorite_track_endpoint(mock_remove_favorite):
+    resp = client.delete("/api/tracks/7/favorite")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"id": 7, "favorited": False}
+    mock_remove_favorite.assert_called_once_with(7)
+
+
+@patch("app.main.warehouse.remove_favorite", return_value=False)
+def test_unfavorite_track_endpoint_404_for_unknown_id(mock_remove_favorite):
+    resp = client.delete("/api/tracks/999999/favorite")
+
+    assert resp.status_code == 404
+
+
+@patch("app.warehouse.psycopg.connect")
+def test_list_tracks_sql_joins_favorites_and_orders_popular_by_playback_count(mock_connect):
+    cur = mock_connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cur.fetchall.return_value = []
+    cur.fetchone.return_value = {"total": 0}
+
+    warehouse.list_tracks(sort="popular", favorited_only=True)
+
+    sql, params = cur.execute.call_args_list[0].args
+    assert "LEFT JOIN favorites" in sql
+    assert "coalesce(playback_count, 0) DESC" in sql
+    assert params["favorited_only"] is True
+
+
+@patch("app.warehouse.psycopg.connect")
+def test_add_favorite_is_a_noop_for_unknown_track(mock_connect):
+    cur = mock_connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = None  # SELECT 1 FROM tracks WHERE id = ... found nothing
+
+    assert warehouse.add_favorite(999999) is False
+    # Only the existence check ran — no INSERT was attempted for a track that doesn't exist.
+    assert cur.execute.call_count == 1

@@ -74,10 +74,13 @@ on phones, with the bottom tab bar.
 - **Add:** paste any playlist, set or profile URL. Or browse a profile's
   `/sets` page to list its playlists first. Browsing is read-only and never
   scrapes on its own.
-- **Library:** everything in the warehouse. It has headline stats, a
-  debounced search (press `/` to focus), genre chips with counts, a source
-  filter, sorting and paging. It reads `GET /api/stats` and
-  `GET /api/tracks?search=&genre=&source_url=&sort=`.
+- **Library:** everything in the warehouse. It has headline stats (including
+  a Favorites count), a debounced search (press `/` to focus), genre chips
+  with counts, a source filter, a Favorites-only toggle, sorting (including
+  "Most played", by SoundCloud's own play count) and paging. Every track row
+  has a heart button to favorite it — a shared list, not per-user, since this
+  app has no accounts (see [CLAUDE.md](CLAUDE.md)). It reads `GET /api/stats`
+  and `GET /api/tracks?search=&genre=&source_url=&sort=&favorited_only=`.
 
 Every scrape goes through one queue, one at a time. The strip under the
 header shows what's running, the elapsed time and how many are queued, with
