@@ -8,11 +8,16 @@ Interactive docs (try-it-out, generated from the same code): `GET /docs` (Swagge
 
 **Caching**: successful `GET /api/*` JSON responses carry a weak `ETag`. `GET /api/playlists` is `Cache-Control: public, max-age=3600`, because the catalog only changes on redeploy. Everything else is `no-cache`: the browser revalidates on every load and gets a body-less `304` when nothing changed, so the data is never stale after a scrape. Responses over 1KB are gzipped when the client accepts it.
 
-**Auth**: `POST /scrape`, `POST /api/discover-playlists`, and the favorite
-endpoints below require an `X-API-Key` header matching `APOLLO_API_KEY` *when
-that setting is non-empty* — it's empty (no auth) by default for local dev.
-`GET /api/tracks`, `GET /api/stats`, and `GET /api/playlists` are never
-gated. See `docs/HOSTING.md` for what this does and doesn't protect against.
+**Auth**: two independent mechanisms, gating different things.
+- `X-API-Key` (matching `APOLLO_API_KEY`, empty/no-op by default) gates
+  `POST /scrape` and `POST /api/discover-playlists` — see `docs/HOSTING.md`
+  for what this does and doesn't protect against.
+- A per-user login (`POST /api/auth/login` → `Authorization: Bearer <token>`)
+  gates the like-list: `POST`/`DELETE /api/tracks/{id}/favorite` and
+  `GET /api/tracks?favorited_only=true`. See "Authentication" below.
+
+`GET /api/tracks` (otherwise), `GET /api/stats`, and `GET /api/playlists` are
+never gated either way.
 
 ---
 
@@ -87,11 +92,11 @@ Paginated, searchable read of everything currently in the warehouse.
 | `genre` | `""` | Case- and surrounding-whitespace-insensitive exact match. Use a `genre` value from `GET /api/stats`. |
 | `source_url` | `""` | Exact match on the playlist/profile URL a track was scraped from. |
 | `sort` | `recent` | `recent` (newest scrape first), `artist`, `title`, or `popular` (highest `playback_count` first; tracks with none known sort last, not excluded). Anything else → `422`. |
-| `favorited_only` | `false` | Only tracks favorited via `POST /api/tracks/{id}/favorite`. |
+| `favorited_only` | `false` | Only tracks on *your* like-list. Requires being logged in (`Authorization: Bearer <token>`) — `422` without one. |
 | `limit` | `50` | Clamped to 1-200. |
 | `offset` | `0` | |
 
-Filters combine, and `total` is the filtered count. A NUL character in `search`, `genre` or `source_url` gives a `422`.
+Filters combine, and `total` is the filtered count. A NUL character in `search`, `genre` or `source_url` gives a `422`. `favorited` on each item reflects *your* like-list when `Authorization: Bearer <token>` is sent — always `false` without one (this endpoint itself never requires login; only `favorited_only` does).
 
 **Response `200`**
 ```json
@@ -122,12 +127,11 @@ Filters combine, and `total` is the filtered count. A NUL character in `search`,
 
 ## `POST /api/tracks/{id}/favorite` · `DELETE /api/tracks/{id}/favorite`
 
-Adds or removes a track from the shared favorites list. There are no user
-accounts in this app (see `docs/HOSTING.md`/`CLAUDE.md`), so it's one shared
-list rather than per-person — consistent with the rest of the app's
-single-tenant design. Both are idempotent: favoriting an already-favorited
-track, or un-favoriting one that was never favorited, just returns the same
-result rather than erroring.
+Adds or removes a track from **your own** like-list — requires being logged
+in (`Authorization: Bearer <token>` from `POST /api/auth/login`). Every
+user's list is theirs alone (see "Authentication" below). Both are
+idempotent: favoriting an already-favorited track, or un-favoriting one that
+was never favorited, just returns the same result rather than erroring.
 
 **Response `200`**
 ```json
@@ -137,8 +141,44 @@ result rather than erroring.
 **Errors**
 | Status | When |
 |---|---|
-| `401` | `APOLLO_API_KEY` is set and the request's `X-API-Key` header is missing or wrong. |
+| `401` | `Authorization` header is missing, malformed, or the token is invalid/expired. |
 | `404` | No track with this id exists. |
+
+---
+
+## Authentication
+
+`POST /api/auth/login`
+Exchanges a username/password for an access token.
+```json
+// request
+{"username": "kieran", "password": "..."}
+// response 200
+{"access_token": "<jwt>", "token_type": "bearer", "username": "kieran"}
+```
+`401` on any wrong username or password — the response never reveals which
+one was wrong, or whether the username exists at all. Rate-limited (10
+requests/minute per IP) to slow down brute-forcing.
+
+Send the token back as `Authorization: Bearer <access_token>` on any gated
+request. Tokens are JWTs signed with `APOLLO_JWT_SECRET`, valid for
+`APOLLO_JWT_EXPIRE_DAYS` (default 30) — there's no refresh-token flow; once
+one expires, log in again.
+
+`GET /api/auth/me`
+Confirms a stored token is still valid and returns its owner's own
+like-list size — what the front end calls on load to decide whether to show
+"logged in as ..." or a login prompt.
+```json
+{"id": 1, "username": "kieran", "favorites_count": 12}
+```
+`401` if the token is missing, malformed, or expired.
+
+**There is no signup endpoint.** Accounts are created by the operator via
+`python -m app.create_user <username>` (prompts for the password — it's
+never accepted as a command-line argument or environment variable, so it
+never ends up in shell history or a process list). See `CLAUDE.md`'s
+Authentication section for why self-service signup isn't built here.
 
 ---
 

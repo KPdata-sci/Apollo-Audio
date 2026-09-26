@@ -10,6 +10,7 @@ resource "kubernetes_secret" "apollo" {
     POSTGRES_DB       = var.postgres_db
     WAREHOUSE_DSN     = "postgresql://${var.postgres_user}:${var.postgres_password}@postgres:5432/${var.postgres_db}"
     API_KEY           = var.api_key
+    JWT_SECRET        = var.jwt_secret
   }
 }
 

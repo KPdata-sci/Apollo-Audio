@@ -12,12 +12,15 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from . import lake, playlists, warehouse
+from . import auth, lake, playlists, warehouse
 from .logging_config import configure_logging, request_id_var
 from .models import (
     DiscoveredPlaylists,
     DiscoverPlaylistsRequest,
     FavoriteResult,
+    LoginRequest,
+    LoginResponse,
+    MeResponse,
     PlaylistEntry,
     ScrapeRequest,
     ScrapeResult,
@@ -63,6 +66,13 @@ async def lifespan(app: FastAPI):
             "APOLLO_API_KEY is not set — POST /scrape and POST /api/discover-playlists "
             "are unauthenticated. Set APOLLO_API_KEY before this API is reachable "
             "outside a fully trusted network (see docs/HOSTING.md)."
+        )
+    if auth.JWT_SECRET_IS_EPHEMERAL:
+        logger.warning(
+            "APOLLO_JWT_SECRET is not set — a random one was generated for this "
+            "process only. Every login will stop working on the next restart, "
+            "and won't be recognized by any other replica. Set APOLLO_JWT_SECRET "
+            "before relying on logins sticking around."
         )
     logger.info("Startup complete — lake backend ready")
     yield
@@ -144,6 +154,27 @@ def require_api_key(x_api_key: str = Header(default="")) -> None:
     network. Read endpoints (/api/tracks, /api/stats, /api/playlists) are never gated."""
     if settings.api_key and x_api_key != settings.api_key:
         raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key header")
+
+
+def get_current_user_optional(authorization: str = Header(default="")) -> dict | None:
+    """Returns {"id", "username"} for a valid `Authorization: Bearer <token>`
+    header, or None for anything else (missing header, wrong scheme, expired
+    or tampered token) — never raises. Used where login is a nice-to-have,
+    not a requirement: GET /api/tracks stays open to everyone, but a logged-in
+    caller's own `favorited` state comes along for the ride."""
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return auth.decode_access_token(token)
+
+
+def get_current_user(user: dict | None = Depends(get_current_user_optional)) -> dict:
+    """Same as above but requires a valid token — for endpoints where acting
+    without an identity makes no sense (favoriting something is inherently
+    personal now, not a shared action gated by a static key)."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Login required")
+    return user
 
 
 @app.middleware("http")
@@ -233,6 +264,7 @@ def list_tracks(
     source_url: str = "",
     sort: Literal["recent", "artist", "title", "popular"] = "recent",
     favorited_only: bool = False,
+    current_user: dict | None = Depends(get_current_user_optional),
 ) -> TracksPage:
     """Paginated, searchable, filterable read of the `tracks` table.
 
@@ -244,11 +276,16 @@ def list_tracks(
     - `sort`: `recent` (default, newest scrape first), `artist`, `title`
       (both A-Z, case-insensitive), or `popular` (highest `playback_count`
       first, tracks with none known sort last). Anything else is a 422.
-    - `favorited_only`: only tracks favorited via POST /api/tracks/{id}/favorite.
+    - `favorited_only`: only tracks on *your* like-list (see POST
+      /api/tracks/{id}/favorite) — requires being logged in (422 otherwise).
+      Browsing itself never requires login: without one, every `favorited`
+      comes back false rather than reflecting anyone else's list.
     - `limit` is clamped to 1-200; `total` is the count after all filters.
     - A NUL character in `search`, `genre`, or `source_url` is a 422.
     """
     _reject_nul(search=search, genre=genre, source_url=source_url)
+    if favorited_only and current_user is None:
+        raise HTTPException(status_code=422, detail="`favorited_only` requires being logged in.")
 
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
@@ -264,6 +301,7 @@ def list_tracks(
         source_url=source_url.strip(),
         sort=sort,
         favorited_only=favorited_only,
+        current_user_id=current_user["id"] if current_user else 0,
     )
     return TracksPage(items=rows, total=total, limit=limit, offset=offset)
 
@@ -273,14 +311,13 @@ def list_tracks(
     response_model=FavoriteResult,
     tags=["favorites"],
     summary="Favorite a track",
-    dependencies=[Depends(require_api_key)],
 )
-def favorite_track(track_id: int) -> FavoriteResult:
-    """Adds `track_id` to the shared favorites list (this app has no user
-    accounts, so it's one list rather than per-person). Idempotent — favoriting
+def favorite_track(track_id: int, current_user: dict = Depends(get_current_user)) -> FavoriteResult:
+    """Adds `track_id` to your own like-list — logging in required (401
+    otherwise), and every user's list is theirs alone. Idempotent — favoriting
     an already-favorited track just returns the same result. 404 if no track
     with this id exists."""
-    if not warehouse.add_favorite(track_id):
+    if not warehouse.add_favorite(current_user["id"], track_id):
         raise HTTPException(status_code=404, detail=f"No track with id {track_id}")
     return FavoriteResult(id=track_id, favorited=True)
 
@@ -290,15 +327,53 @@ def favorite_track(track_id: int) -> FavoriteResult:
     response_model=FavoriteResult,
     tags=["favorites"],
     summary="Un-favorite a track",
-    dependencies=[Depends(require_api_key)],
 )
-def unfavorite_track(track_id: int) -> FavoriteResult:
-    """Removes `track_id` from the shared favorites list. Idempotent — 404
-    only when no track with this id exists at all, not when it simply wasn't
-    favorited to begin with."""
-    if not warehouse.remove_favorite(track_id):
+def unfavorite_track(track_id: int, current_user: dict = Depends(get_current_user)) -> FavoriteResult:
+    """Removes `track_id` from your own like-list. Idempotent — 404 only when
+    no track with this id exists at all, not when it simply wasn't favorited
+    to begin with."""
+    if not warehouse.remove_favorite(current_user["id"], track_id):
         raise HTTPException(status_code=404, detail=f"No track with id {track_id}")
     return FavoriteResult(id=track_id, favorited=False)
+
+
+@app.post(
+    "/api/auth/login",
+    response_model=LoginResponse,
+    tags=["auth"],
+    summary="Log in",
+)
+@limiter.limit("10/minute")
+def login(request: Request, payload: LoginRequest) -> LoginResponse:
+    """Exchanges a username/password for a JWT access token (see
+    app/auth.py) to send back as `Authorization: Bearer <token>` on the
+    favorite endpoints and (optionally) GET /api/tracks. There is no signup
+    endpoint — accounts are created with `python -m app.create_user` (see
+    CLAUDE.md) — so a failed login here never distinguishes "no such user"
+    from "wrong password"; both look identical from the outside."""
+    user = warehouse.get_user_by_username(payload.username)
+    if user is None or not auth.verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    token = auth.create_access_token(user["id"], user["username"])
+    return LoginResponse(access_token=token, username=user["username"])
+
+
+@app.get(
+    "/api/auth/me",
+    response_model=MeResponse,
+    tags=["auth"],
+    summary="Who am I",
+)
+def me(current_user: dict = Depends(get_current_user)) -> MeResponse:
+    """Confirms a stored token is still valid and returns its owner's own
+    like-list count — the front end uses this on load to decide whether to
+    show "logged in as ..." or a login prompt, without guessing from the
+    token's own (unverified-by-the-client) contents."""
+    return MeResponse(
+        id=current_user["id"],
+        username=current_user["username"],
+        favorites_count=warehouse.count_favorites(current_user["id"]),
+    )
 
 
 @app.get(

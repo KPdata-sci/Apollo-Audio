@@ -81,9 +81,21 @@ on phones, with the bottom tab bar.
   shows its own artwork (or the uploader's avatar, when a track has none of
   its own) hotlinked straight from SoundCloud's CDN — this app never
   downloads or rehosts it, same policy as audio itself — and has a heart
-  button to favorite it, a shared list rather than per-user since this app
-  has no accounts (see [CLAUDE.md](CLAUDE.md)). It reads `GET /api/stats` and
+  button to favorite it: your own personal like-list, once you log in (see
+  "Logging in" below). It reads `GET /api/stats` and
   `GET /api/tracks?search=&genre=&source_url=&sort=&favorited_only=`.
+
+### Logging in
+
+Favoriting a track is the one thing in this app that's personal rather than
+shared — everything else (browsing, scraping, stats) works the same for
+everyone with no login at all. There's no public sign-up: an account is
+created for you by whoever runs the deployment, via
+`docker compose exec api python -m app.create_user <username>` (prompts for
+a password). Log in from the header once you have one, and your like-list
+follows you across devices/browsers as long as you're logged in on each.
+Passwords are hashed (Argon2id) before they ever reach the database — see
+[CLAUDE.md](CLAUDE.md)'s Authentication section for the full model.
 
 Every scrape goes through one queue, one at a time. The strip under the
 header shows what's running, the elapsed time and how many are queued, with

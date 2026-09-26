@@ -29,11 +29,13 @@ Runs on every push and PR to any branch, as four jobs:
 - **compose-smoke** (runs after `test` passes) — actually boots the real
   `docker compose up -d --build` stack (postgres + api + frontend, using
   docker-compose.yml's own defaults, no `.env` needed) and hits it over real
-  HTTP: `/health`, `/api/stats`, `/api/playlists`, the frontend's `/`, and a
-  favorite-endpoint round trip. This is the level below **test** and above
-  **docker-build** — it catches a container that builds fine but is wired
-  wrong (bad `CMD`, wrong port/env mapping, a migration that silently didn't
-  apply), which mocked unit tests and a bare image build can't see.
+  HTTP: `/health`, `/api/stats`, `/api/playlists`, the frontend's `/`, and
+  that the favorite and login endpoints correctly reject an unauthenticated/
+  unknown-user request (`401`) against a freshly-migrated database. This is
+  the level below **test** and above **docker-build** — it catches a
+  container that builds fine but is wired wrong (bad `CMD`, wrong port/env
+  mapping, a migration that silently didn't apply), which mocked unit tests
+  and a bare image build can't see.
 
 ## Why CD is manual today
 

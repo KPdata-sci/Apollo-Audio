@@ -77,6 +77,23 @@ class FavoriteResult(BaseModel):
     favorited: bool
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    username: str
+
+
+class MeResponse(BaseModel):
+    id: int
+    username: str
+    favorites_count: int
+
+
 class PlaylistEntry(BaseModel):
     name: str
     url: str

@@ -174,13 +174,17 @@ jobs:
           curl -sf http://localhost:8000/api/stats
           curl -sf http://localhost:8000/api/playlists
           curl -sf http://localhost:8080/ | grep -qi "<html"
-          # Favorites endpoint, wired through the real container against a
-          # freshly-migrated (so definitely empty) database — 404 is the
-          # correct response for a track id that can't exist yet, and
-          # confirms the route/dependency wiring works outside the unit
-          # tests' mocked warehouse.
+          # Favorite endpoint requires login — 401 with no Authorization
+          # header confirms the route/dependency wiring works outside the
+          # unit tests' mocked warehouse, against the real container.
           status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/tracks/1/favorite)
-          test "$status" = "404"
+          test "$status" = "401"
+          # Login itself, wired through the real container against a
+          # freshly-migrated (so definitely empty) database — no such user
+          # exists yet, so this must be rejected too.
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/auth/login \
+            -H "Content-Type: application/json" -d '{"username": "nobody", "password": "whatever"}')
+          test "$status" = "401"
 
       - name: Show container logs on failure
         if: failure()

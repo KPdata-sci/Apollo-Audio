@@ -3,10 +3,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app import warehouse
+from app import auth, warehouse
 from app.main import app
 
 client = TestClient(app)
+
+
+def _auth_header(user_id: int = 1, username: str = "tester") -> dict:
+    return {"Authorization": f"Bearer {auth.create_access_token(user_id, username)}"}
 
 
 def test_health():
@@ -64,7 +68,8 @@ def test_list_tracks_endpoint(mock_list_tracks):
     assert body["total"] == 1
     assert body["items"][0]["title"] == "Song"
     mock_list_tracks.assert_called_once_with(
-        search="song", limit=10, offset=0, genre="", source_url="", sort="recent", favorited_only=False
+        search="song", limit=10, offset=0, genre="", source_url="", sort="recent",
+        favorited_only=False, current_user_id=0,
     )
 
 
@@ -93,16 +98,37 @@ def test_list_tracks_passes_filters_and_sort(mock_list_tracks):
         source_url="https://soundcloud.com/a/sets/b",
         sort="artist",
         favorited_only=False,
+        current_user_id=0,
     )
 
 
 @patch("app.main.warehouse.list_tracks", return_value=([], 0))
-def test_list_tracks_accepts_popular_sort_and_favorited_only(mock_list_tracks):
-    resp = client.get("/api/tracks", params={"sort": "popular", "favorited_only": "true"})
+def test_list_tracks_accepts_popular_sort(mock_list_tracks):
+    resp = client.get("/api/tracks", params={"sort": "popular"})
 
     assert resp.status_code == 200
     mock_list_tracks.assert_called_once_with(
-        search="", limit=50, offset=0, genre="", source_url="", sort="popular", favorited_only=True
+        search="", limit=50, offset=0, genre="", source_url="", sort="popular",
+        favorited_only=False, current_user_id=0,
+    )
+
+
+@patch("app.main.warehouse.list_tracks", return_value=([], 0))
+def test_favorited_only_requires_login(mock_list_tracks):
+    resp = client.get("/api/tracks", params={"favorited_only": "true"})
+
+    assert resp.status_code == 422
+    mock_list_tracks.assert_not_called()
+
+
+@patch("app.main.warehouse.list_tracks", return_value=([], 0))
+def test_favorited_only_scopes_to_the_logged_in_user(mock_list_tracks):
+    resp = client.get("/api/tracks", params={"favorited_only": "true"}, headers=_auth_header(user_id=42))
+
+    assert resp.status_code == 200
+    mock_list_tracks.assert_called_once_with(
+        search="", limit=50, offset=0, genre="", source_url="", sort="recent",
+        favorited_only=True, current_user_id=42,
     )
 
 
@@ -314,48 +340,119 @@ def test_discover_playlists_rejects_non_soundcloud_url():
 
 @patch("app.main.warehouse.add_favorite", return_value=True)
 def test_favorite_track_endpoint(mock_add_favorite):
-    resp = client.post("/api/tracks/7/favorite")
+    resp = client.post("/api/tracks/7/favorite", headers=_auth_header(user_id=42))
 
     assert resp.status_code == 200
     assert resp.json() == {"id": 7, "favorited": True}
-    mock_add_favorite.assert_called_once_with(7)
+    mock_add_favorite.assert_called_once_with(42, 7)
+
+
+def test_favorite_track_endpoint_requires_login():
+    resp = client.post("/api/tracks/7/favorite")
+
+    assert resp.status_code == 401
+
+
+def test_favorite_track_endpoint_rejects_a_tampered_token():
+    resp = client.post("/api/tracks/7/favorite", headers={"Authorization": "Bearer not-a-real-token"})
+
+    assert resp.status_code == 401
 
 
 @patch("app.main.warehouse.add_favorite", return_value=False)
 def test_favorite_track_endpoint_404_for_unknown_id(mock_add_favorite):
-    resp = client.post("/api/tracks/999999/favorite")
+    resp = client.post("/api/tracks/999999/favorite", headers=_auth_header())
 
     assert resp.status_code == 404
 
 
 @patch("app.main.warehouse.remove_favorite", return_value=True)
 def test_unfavorite_track_endpoint(mock_remove_favorite):
-    resp = client.delete("/api/tracks/7/favorite")
+    resp = client.delete("/api/tracks/7/favorite", headers=_auth_header(user_id=42))
 
     assert resp.status_code == 200
     assert resp.json() == {"id": 7, "favorited": False}
-    mock_remove_favorite.assert_called_once_with(7)
+    mock_remove_favorite.assert_called_once_with(42, 7)
+
+
+def test_unfavorite_track_endpoint_requires_login():
+    resp = client.delete("/api/tracks/7/favorite")
+
+    assert resp.status_code == 401
 
 
 @patch("app.main.warehouse.remove_favorite", return_value=False)
 def test_unfavorite_track_endpoint_404_for_unknown_id(mock_remove_favorite):
-    resp = client.delete("/api/tracks/999999/favorite")
+    resp = client.delete("/api/tracks/999999/favorite", headers=_auth_header())
 
     assert resp.status_code == 404
 
 
+@patch("app.main.warehouse.get_user_by_username")
+def test_login_succeeds_with_correct_password(mock_get_user):
+    mock_get_user.return_value = {
+        "id": 1, "username": "kieran", "password_hash": auth.hash_password("correct horse")
+    }
+
+    resp = client.post("/api/auth/login", json={"username": "kieran", "password": "correct horse"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["username"] == "kieran"
+    assert body["token_type"] == "bearer"
+    decoded = auth.decode_access_token(body["access_token"])
+    assert decoded == {"id": 1, "username": "kieran"}
+
+
+@patch("app.main.warehouse.get_user_by_username")
+def test_login_rejects_wrong_password(mock_get_user):
+    mock_get_user.return_value = {
+        "id": 1, "username": "kieran", "password_hash": auth.hash_password("correct horse")
+    }
+
+    resp = client.post("/api/auth/login", json={"username": "kieran", "password": "wrong"})
+
+    assert resp.status_code == 401
+
+
+@patch("app.main.warehouse.get_user_by_username", return_value=None)
+def test_login_rejects_unknown_username_identically_to_wrong_password(mock_get_user):
+    # Same status/detail either way — a login response never confirms or
+    # denies that a given username exists.
+    resp = client.post("/api/auth/login", json={"username": "nobody", "password": "whatever"})
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Incorrect username or password"
+
+
+@patch("app.main.warehouse.count_favorites", return_value=3)
+def test_me_endpoint_returns_the_logged_in_user(mock_count):
+    resp = client.get("/api/auth/me", headers=_auth_header(user_id=42, username="kieran"))
+
+    assert resp.status_code == 200
+    assert resp.json() == {"id": 42, "username": "kieran", "favorites_count": 3}
+
+
+def test_me_endpoint_requires_login():
+    resp = client.get("/api/auth/me")
+
+    assert resp.status_code == 401
+
+
 @patch("app.warehouse.psycopg.connect")
-def test_list_tracks_sql_joins_favorites_and_orders_popular_by_playback_count(mock_connect):
+def test_list_tracks_sql_joins_favorites_scoped_to_current_user_and_orders_popular(mock_connect):
     cur = mock_connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchall.return_value = []
     cur.fetchone.return_value = {"total": 0}
 
-    warehouse.list_tracks(sort="popular", favorited_only=True)
+    warehouse.list_tracks(sort="popular", favorited_only=True, current_user_id=42)
 
     sql, params = cur.execute.call_args_list[0].args
     assert "LEFT JOIN favorites" in sql
+    assert "f.user_id = %(current_user_id)s" in sql
     assert "coalesce(playback_count, 0) DESC" in sql
     assert params["favorited_only"] is True
+    assert params["current_user_id"] == 42
 
 
 @patch("app.warehouse.psycopg.connect")
@@ -363,6 +460,6 @@ def test_add_favorite_is_a_noop_for_unknown_track(mock_connect):
     cur = mock_connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchone.return_value = None  # SELECT 1 FROM tracks WHERE id = ... found nothing
 
-    assert warehouse.add_favorite(999999) is False
+    assert warehouse.add_favorite(1, 999999) is False
     # Only the existence check ran — no INSERT was attempted for a track that doesn't exist.
     assert cur.execute.call_count == 1
