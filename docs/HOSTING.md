@@ -203,21 +203,32 @@ lighter deterrent rather than a full account system, on purpose.
   will silently pick up whatever's newest on your next `terraform apply` /
   image pull — pin it to a specific version like the other images already are
   (`postgres:16-alpine`, `nginx:1.27-alpine`).
-- **Non-root containers — done.** `scraper/Dockerfile` now runs as the image's
-  own `pwuser` (uid/gid 1000; verified Firefox launches fine under it, no
-  sandbox flags needed). The volume-ownership problem this was blocked on is
-  handled by `fs_group = 1000` in `api.tf`'s pod `security_context` —
-  Kubernetes re-chowns a mounted PVC's contents to that group on every mount
-  (not just first creation), so it fixes files an earlier root-owned pod
-  already wrote there, not just new ones. **Migrating an existing
-  deployment** (this one included) hits a real one-time snag the first time
-  the non-root image runs against data an old root-owned container created:
-  the k8s pod remount handles the PVC automatically, but a local
-  `docker compose` bind mount (`./data/lake`, `./logs`) gets no such
-  automatic fix — an old root-owned `apollo.log` or lake subdirectory tree
-  blocks the new non-root process with `PermissionError`/"Could not open log
-  directory", surfaced exactly like that during this change. Fix once with:
-  `docker run --rm -v "$PWD/data/lake:/data/lake" -v "$PWD/logs:/logs" busybox chown -R 1000:1000 /data/lake /logs`.
+- **Non-root containers — done.** The actual server runs as the image's own
+  `pwuser` (uid/gid 1000; verified Firefox launches fine under it, no
+  sandbox flags needed) — but the *container* still starts as root, via
+  `scraper/docker-entrypoint.sh`, which `chown`s whatever's actually mounted
+  at `/data`/the log paths and then drops to `pwuser` before `exec`ing
+  `uvicorn` (the same standard pattern official images like `postgres` use).
+  A build-time `chown` in the Dockerfile alone can never reach a path that
+  gets a volume mounted over it at runtime — first tried exactly that, and
+  it broke in two ways worth remembering:
+  - **A real Linux Docker host auto-creates a missing bind-mount source as
+    root.** This isn't just a migration concern for an existing volume — it
+    broke a completely fresh `docker compose up` clone on GitHub Actions'
+    real Linux runners (this project's own Docker Desktop dev machine is
+    more lenient about it, which is exactly why it passed every local check
+    first and only failed in CI). The entrypoint's runtime `chown` fixes
+    this the same way regardless of whether the volume is old or brand new.
+  - **`setpriv` (the tool the entrypoint drops privileges with) doesn't
+    reset the environment** the way `su`/`gosu` do — `$HOME` stayed `/root`
+    even after switching to `pwuser`, who can't write there, and
+    Firefox/Playwright's driver hung rather than erroring trying to set up
+    a profile under it. Found by reproducing it standalone (not guessed at):
+    the entrypoint explicitly exports `HOME`/`USER`/`LOGNAME` for `pwuser`
+    before dropping to it.
+  Kubernetes needs no extra `security_context` for any of this — forcing
+  `run_as_user` there would skip straight past the entrypoint's root phase
+  and reintroduce the same bug it fixes.
 - **`NetworkPolicy` isn't real protection here**: Docker Desktop's
   Kubernetes (and k3s's default Flannel CNI) don't enforce `NetworkPolicy`
   objects out of the box, so adding one would look like a control without

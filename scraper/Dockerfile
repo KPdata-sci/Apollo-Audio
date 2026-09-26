@@ -10,17 +10,20 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+RUN chown -R pwuser:pwuser /app
 
-# Runs as the image's own non-root user rather than root (the Playwright base
-# image's default) — Firefox launches fine under it with no extra sandbox
-# flags (verified). Two log-dir paths because docker-compose and the k8s
-# Deployment mount volumes at different paths (see docker-compose.yml vs.
-# api.tf's APOLLO_LOG_DIR) — chowning both here covers a fresh container
-# either way; a pre-existing Kubernetes PVC mounted over one still needs its
-# own ownership fix — see api.tf's `fs_group` security context, which
-# handles that at the volume level.
-RUN mkdir -p /data/lake /data/logs /var/log/apollo && chown -R pwuser:pwuser /data /var/log/apollo /app
-USER pwuser
+# Runs the actual server as the image's own non-root pwuser rather than root
+# (the Playwright base image's default) — Firefox launches fine under it
+# with no extra sandbox flags (verified) — but the container itself still
+# *starts* as root, via docker-entrypoint.sh, because the actual /data and
+# log paths are volumes mounted at runtime (a docker-compose bind mount or a
+# Kubernetes PVC), not something a build-time chown here can ever reach. The
+# entrypoint fixes ownership of whatever's really mounted there, then drops
+# to pwuser before exec'ing the real command — see that script's own comment
+# for why this is a fresh-clone-breaking bug, not just a migration nicety.
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 EXPOSE 8000
 

@@ -25,11 +25,9 @@ resource "kubernetes_cron_job_v1" "refresh_metadata" {
           }
           spec {
             restart_policy = "Never"
-            # Matches api.tf's Deployment and ingest-cronjob.tf: this Job's
-            # pod writes to the same shared PVC.
-            security_context {
-              fs_group = 1000
-            }
+            # No security_context override — see api.tf's comment: the
+            # image's own docker-entrypoint.sh handles this by starting as
+            # root and dropping to pwuser itself.
 
             container {
               name              = "refresh-metadata"

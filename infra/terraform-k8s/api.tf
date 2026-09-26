@@ -36,15 +36,15 @@ resource "kubernetes_deployment" "api" {
         labels = { app = "api" }
       }
       spec {
-        # fs_group makes Kubernetes chown the mounted PVC to this GID the
-        # first time it's mounted — the standard k8s-native fix for a
-        # non-root container writing to a volume that was created (and thus
-        # owned by root) before this container ever ran, without a manual
-        # initContainer. Matches the scraper image's own `pwuser` (uid/gid
-        # 1000, verified) that the Dockerfile now runs as.
-        security_context {
-          fs_group = 1000
-        }
+        # No security_context override here on purpose — the image's own
+        # docker-entrypoint.sh needs to start as root (the image's actual
+        # default) so it can chown() whatever the PVC mount really looks
+        # like at runtime, then drops to pwuser itself before exec'ing
+        # uvicorn. Forcing run_as_user here would skip straight past that
+        # root phase and break it — this isn't a "belt and suspenders" layer
+        # to add alongside the entrypoint, it's the one place that fix can
+        # actually work, for the same reason a build-time Dockerfile chown
+        # couldn't (see that script's own comment).
         container {
           name  = "api"
           image = var.scraper_image
@@ -54,11 +54,6 @@ resource "kubernetes_deployment" "api" {
           # which would make the kubelet try (and fail) to re-pull
           # "docker.io/library/..." from the real Docker Hub on every restart.
           image_pull_policy = "Never"
-
-          security_context {
-            run_as_user  = 1000
-            run_as_group = 1000
-          }
 
           env {
             name  = "APOLLO_LAKE_PATH"

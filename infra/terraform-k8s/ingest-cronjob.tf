@@ -26,13 +26,10 @@ resource "kubernetes_cron_job_v1" "ingest" {
           }
           spec {
             restart_policy = "Never"
-            # Matches api.tf's Deployment: this Job's pod writes to the same
-            # shared PVC, so it needs the same fs_group fix for pre-existing
-            # (previously root-owned) files there — same reasoning, see the
-            # comment on api.tf's security_context.
-            security_context {
-              fs_group = 1000
-            }
+            # No security_context override — same image as api.tf's
+            # Deployment, whose own comment explains why: its
+            # docker-entrypoint.sh needs to start as root to fix the shared
+            # PVC's ownership itself before dropping to pwuser.
 
             container {
               name  = "ingest"
