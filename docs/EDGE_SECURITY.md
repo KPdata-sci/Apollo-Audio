@@ -282,7 +282,12 @@ enterprise-grade advice that doesn't fit a single-user home deployment:
    the home LAN's actual subnet if any less-trusted device might join that
    LAN — the "Windows Firewall / Hyper-V External Switch" gap above is the
    most concrete, already-real exposure this doc found, more pressing than
-   anything Tailscale-ACL-related.
+   anything Tailscale-ACL-related. This got a real stake in it once user
+   accounts existed: `POST /api/auth/login` sends a password, and every
+   gated request afterward sends a bearer token, both in plain HTTP — fine
+   over the Tailscale tunnel itself (WireGuard encrypts that hop), not fine
+   over the bridged-LAN path this item is about, where there's no transport
+   encryption at all.
 2. Resolve the two credential items `NEXT_STEPS.md` already flags — the
    NOPASSWD sudoers rule and the leftover setup SSH key — since either one
    is a perimeter bypass regardless of any Tailscale or NetworkPolicy work.
@@ -298,15 +303,24 @@ enterprise-grade advice that doesn't fit a single-user home deployment:
 5. Write the Tailscale ACL policy above into the admin console once a second
    device joins the tailnet — trivial effort, but genuinely not needed for
    one person on one device today.
+6. Login tokens are a client-stored `Authorization: Bearer` header
+   (`localStorage`), not an `httpOnly` cookie — a deliberate choice (see
+   `CLAUDE.md`'s Authentication section) since the frontend/API are
+   different origins with no TLS anywhere in this stack, and a cross-origin
+   cookie needs `Secure`, which needs TLS. The trade-off: a token sitting in
+   `localStorage` is exposed to any successful XSS in a way an `httpOnly`
+   cookie wouldn't be. Revisit this only alongside the TLS-termination work
+   in Track 2 below — an `httpOnly` cookie without TLS behind it wouldn't
+   actually be safer, just differently exposed.
 
 **Defer until/unless this goes public:**
-6. Everything in Track 2 (domain/DNS, cert-manager, an ingress controller,
+7. Everything in Track 2 (domain/DNS, cert-manager, an ingress controller,
    Cloudflare, geo/IP allowlisting) — none of it does anything for a service
    with no public listener.
-7. The `NetworkPolicy`/Calico/Cilium work — correct in principle, but a CNI
+8. The `NetworkPolicy`/Calico/Cilium work — correct in principle, but a CNI
    migration is disproportionate effort for a single-owner cluster with no
    untrusted workloads sharing it.
-8. Enterprise WAF/DDoS products of any kind — out of proportion at any point
+9. Enterprise WAF/DDoS products of any kind — out of proportion at any point
    this project is likely to reach as a personal tool.
 
 The single most load-bearing fact this doc surfaces: Tailscale ACLs and

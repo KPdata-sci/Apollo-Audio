@@ -1089,6 +1089,11 @@
         <span class="key-label">API key</span>
         <span class="key-dot" aria-hidden="true"></span>
       </button>
+      <button type="button" id="auth-btn" class="btn btn-secondary btn-sm key-btn" title="Log in to favorite tracks" aria-haspopup="dialog">
+        <svg class="i i-sm" aria-hidden="true"><use href="#i-user"/></svg>
+        <span class="key-label" id="auth-btn-label">Log in</span>
+        <span class="key-dot" aria-hidden="true"></span>
+      </button>
     </div>
   </div>
 
@@ -1288,6 +1293,45 @@
   </form>
 </dialog>
 
+<dialog id="login-dialog" aria-labelledby="login-title" aria-describedby="login-desc">
+  <form id="login-form" class="dialog-body" novalidate>
+    <div class="dialog-icon"><svg class="i i-lg" aria-hidden="true"><use href="#i-user"/></svg></div>
+    <div>
+      <h2 id="login-title">Log in</h2>
+      <p id="login-desc" style="margin-top:6px">Favorites are personal — log in to save tracks to your own list. There's no sign-up here; ask whoever runs this server for an account.</p>
+    </div>
+    <div>
+      <label for="login-username" class="field-label">Username</label>
+      <input id="login-username" class="input" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+    </div>
+    <div>
+      <label for="login-password" class="field-label">Password</label>
+      <input id="login-password" class="input" type="password" autocomplete="current-password" required>
+    </div>
+    <div id="login-error" hidden></div>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button type="button" id="login-cancel" class="btn btn-secondary">Cancel</button>
+      <button type="submit" id="login-submit" class="btn btn-primary">Log in</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="account-dialog" aria-labelledby="account-title" aria-describedby="account-desc">
+  <div class="dialog-body">
+    <div class="dialog-icon"><svg class="i i-lg" aria-hidden="true"><use href="#i-user"/></svg></div>
+    <div>
+      <h2 id="account-title">Account</h2>
+      <p id="account-desc" style="margin-top:6px">Logged in as <strong id="account-username"></strong>. <span id="account-fav-count"></span></p>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="account-logout" class="btn btn-ghost btn-danger">Log out</button>
+      <span class="spacer"></span>
+      <button type="button" id="account-close" class="btn btn-secondary">Close</button>
+    </div>
+  </div>
+</dialog>
+
 <script src="config.js"></script>
 <script>
 // config.js (generated per-deployment, see frontend/) sets window.APOLLO_API_BASE
@@ -1329,9 +1373,33 @@ function setApiKey(key) {
     // localStorage unavailable (private browsing etc.) — key just won't persist
   }
 }
+// The favorite endpoints and (optionally) GET /api/tracks are gated by a
+// per-user JWT from POST /api/auth/login — a separate thing from the shared
+// API key above. Same localStorage-persistence approach, same "this is
+// visible in the network tab" caveat.
+const AUTH_TOKEN_STORAGE_KEY = "apollo_auth_token";
+function getAuthToken() {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+function setAuthToken(token) {
+  try {
+    if (token) localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  } catch {
+    // localStorage unavailable (private browsing etc.) — token just won't persist
+  }
+}
 function authHeaders() {
   const key = getApiKey();
-  return key ? { "X-API-Key": key } : {};
+  const token = getAuthToken();
+  return {
+    ...(key ? { "X-API-Key": key } : {}),
+    ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+  };
 }
 
 /* ==========================================================================
@@ -1491,6 +1559,17 @@ function explainError(status, body, err) {
     };
   }
   if (status === 401) {
+    // Two different 401s share this status: the shared X-API-Key gate on
+    // /scrape and /api/discover-playlists ("set-key"), and a missing/expired
+    // per-user login token on the favorite endpoints and /api/auth/me
+    // ("login") — distinguished by the API's own detail text.
+    if (/login required/i.test(detail)) {
+      return {
+        title: "Log in required",
+        message: "You need to be logged in to do that. Log in, then try again.",
+        detail, action: "login",
+      };
+    }
     return {
       title: "API key needed",
       message: "This server requires an API key for scraping and browsing. Set it with the API key button in the top bar, then try again.",
@@ -1498,6 +1577,13 @@ function explainError(status, body, err) {
     };
   }
   if (status === 422) {
+    if (/favorited_only/i.test(detail)) {
+      return {
+        title: "Log in to filter favorites",
+        message: "Viewing just your favorites requires being logged in.",
+        detail, action: "login",
+      };
+    }
     if (/logged in/i.test(detail)) {
       return {
         title: "Login-only page",
@@ -1543,7 +1629,9 @@ function calloutHtml(kind, title, message, { detail = "", actionsHtml = "" } = {
   </div></div>`;
 }
 function errorCallout(e) {
-  const actions = e.action === "set-key" ? `<button type="button" class="btn btn-secondary btn-sm" data-action="set-key">${icon("key", "i-sm")}Set API key</button>` : "";
+  const actions = e.action === "set-key" ? `<button type="button" class="btn btn-secondary btn-sm" data-action="set-key">${icon("key", "i-sm")}Set API key</button>`
+    : e.action === "login" ? `<button type="button" class="btn btn-secondary btn-sm" data-action="login">${icon("user", "i-sm")}Log in</button>`
+    : "";
   return calloutHtml("error", e.title, e.message, { detail: e.detail, actionsHtml: actions });
 }
 // Client-side check before spending a request (the server enforces it too).
@@ -1671,6 +1759,149 @@ $("#key-form").addEventListener("submit", () => {
 keyDialog.addEventListener("click", e => { if (e.target === keyDialog) keyDialog.close(); });
 keyDialog.addEventListener("close", () => apiKeyBtn.focus());
 refreshApiKeyBtnState();
+
+/* ==========================================================================
+   Login / account — per-user favorites (POST /api/auth/login, GET
+   /api/auth/me). There's no self-service signup; accounts are created by an
+   operator via `python -m app.create_user` (see CLAUDE.md). One header
+   button doubles as both controls, same idea as the API key button: it opens
+   the login dialog when logged out, or the account dialog (with Log out)
+   when logged in.
+   ========================================================================== */
+let authUser = null; // {id, username, favorites_count} once GET /api/auth/me succeeds, else null
+const authBtn = $("#auth-btn");
+const authBtnLabel = $("#auth-btn-label");
+
+const loginDialog = $("#login-dialog");
+const loginForm = $("#login-form");
+const loginUsername = $("#login-username");
+const loginPassword = $("#login-password");
+const loginError = $("#login-error");
+const loginSubmitBtn = $("#login-submit");
+
+const accountDialog = $("#account-dialog");
+const accountUsernameEl = $("#account-username");
+const accountFavCountEl = $("#account-fav-count");
+
+function renderAuthUI() {
+  const loggedIn = Boolean(authUser);
+  authBtn.classList.toggle("key-set", loggedIn);
+  authBtnLabel.textContent = loggedIn ? authUser.username : "Log in";
+  authBtn.title = loggedIn ? `Logged in as ${authUser.username}` : "Log in to favorite tracks";
+  authBtn.setAttribute("aria-label", loggedIn ? `Account: ${authUser.username}` : "Log in");
+}
+
+function openLoginDialog() {
+  if (accountDialog.open) accountDialog.close();
+  loginForm.reset();
+  loginUsername.removeAttribute("aria-invalid");
+  loginPassword.removeAttribute("aria-invalid");
+  loginError.hidden = true;
+  loginError.innerHTML = "";
+  loginSubmitBtn.disabled = false;
+  loginDialog.showModal();
+  loginUsername.focus();
+}
+authBtn.addEventListener("click", () => { authUser ? openAccountDialog() : openLoginDialog(); });
+$("#login-cancel").addEventListener("click", () => loginDialog.close());
+loginDialog.addEventListener("click", e => { if (e.target === loginDialog) loginDialog.close(); });
+loginDialog.addEventListener("close", () => authBtn.focus());
+loginUsername.addEventListener("input", () => loginUsername.removeAttribute("aria-invalid"));
+loginPassword.addEventListener("input", () => loginPassword.removeAttribute("aria-invalid"));
+
+loginForm.addEventListener("submit", async e => {
+  e.preventDefault();
+  const username = loginUsername.value.trim();
+  const password = loginPassword.value;
+  if (!username || !password) {
+    if (!username) loginUsername.setAttribute("aria-invalid", "true");
+    if (!password) loginPassword.setAttribute("aria-invalid", "true");
+    (!username ? loginUsername : loginPassword).focus();
+    return;
+  }
+  loginSubmitBtn.disabled = true;
+  loginError.hidden = true;
+  loginError.innerHTML = "";
+  let res, body;
+  try {
+    res = await fetch(apiUrl("/api/auth/login"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    body = await readBody(res);
+  } catch (err) {
+    loginError.innerHTML = calloutHtml("error", "Couldn't log in", explainError(0, {}, err).message);
+    loginError.hidden = false;
+    loginSubmitBtn.disabled = false;
+    return;
+  }
+  if (!res.ok) {
+    // The API never distinguishes "no such user" from "wrong password" — see
+    // POST /api/auth/login's docstring — so neither does this message.
+    const message = res.status === 401 ? "Incorrect username or password." : (detailText(body) || `HTTP ${res.status}`);
+    loginError.innerHTML = calloutHtml("error", "Couldn't log in", message);
+    loginError.hidden = false;
+    loginSubmitBtn.disabled = false;
+    loginPassword.focus();
+    loginPassword.select();
+    return;
+  }
+  setAuthToken(body.access_token);
+  loginDialog.close();
+  toast({ kind: "success", title: `Logged in as ${body.username}` });
+  await refreshAuthState();
+  loadTracks({ quiet: true }); // re-fetch so `favorited` reflects this user
+  loginSubmitBtn.disabled = false;
+});
+
+function openAccountDialog() {
+  if (!authUser) { openLoginDialog(); return; }
+  if (loginDialog.open) loginDialog.close();
+  accountUsernameEl.textContent = authUser.username;
+  accountFavCountEl.textContent = typeof authUser.favorites_count === "number" ? `${plural(authUser.favorites_count, "favorite")}.` : "";
+  accountDialog.showModal();
+}
+$("#account-close").addEventListener("click", () => accountDialog.close());
+accountDialog.addEventListener("click", e => { if (e.target === accountDialog) accountDialog.close(); });
+accountDialog.addEventListener("close", () => authBtn.focus());
+$("#account-logout").addEventListener("click", () => {
+  accountDialog.close();
+  logOut();
+});
+
+function logOut() {
+  setAuthToken("");
+  authUser = null;
+  renderAuthUI();
+  // Favorite state (both the row hearts and the "Favorites only" filter)
+  // belonged to the user who just logged out — drop it rather than let a
+  // stale favorited=true linger for the next (or no) user.
+  if (state.favoritesOnly) { state.favoritesOnly = false; renderFilters(); }
+  loadTracks({ quiet: true });
+  toast({ kind: "info", title: "Logged out" });
+}
+
+// Called on load (if a token is stored) and after login/logout. Never trusts
+// a stored token at face value — GET /api/auth/me is the source of truth for
+// whether it's still valid, and for the username/favorites_count to display.
+async function refreshAuthState() {
+  if (!getAuthToken()) { authUser = null; renderAuthUI(); return; }
+  try {
+    const res = await fetch(apiUrl("/api/auth/me"), { headers: { ...authHeaders() } });
+    if (res.status === 401) {
+      setAuthToken(""); // stale/expired token — stop sending it
+      authUser = null;
+    } else if (res.ok) {
+      authUser = await res.json();
+    }
+    // Any other failure (5xx, bad JSON): leave the stored token alone and
+    // just render as logged-out for this load — retried on the next one.
+  } catch {
+    // API unreachable — don't discard a token that might still be valid.
+  }
+  renderAuthUI();
+}
 
 /* ==========================================================================
    Views (hash routing)
@@ -1917,6 +2148,7 @@ genreChips.addEventListener("click", e => {
 sourceSelect.addEventListener("change", () => { state.source = sourceSelect.value; state.offset = 0; renderActiveFilters(); loadTracks(); });
 sortSelect.addEventListener("change", () => { state.sort = sortSelect.value; state.offset = 0; renderActiveFilters(); loadTracks(); });
 favoritesToggle.addEventListener("click", () => {
+  if (!authUser) { openLoginDialog(); return; }
   state.favoritesOnly = !state.favoritesOnly;
   state.offset = 0;
   renderFilters();
@@ -1990,7 +2222,7 @@ async function loadTracks({ quiet = false } = {}) {
   }
   let res;
   try {
-    res = await fetch(apiUrl(`/api/tracks?${params}`), { signal: tracksController.signal });
+    res = await fetch(apiUrl(`/api/tracks?${params}`), { signal: tracksController.signal, headers: { ...authHeaders() } });
   } catch (err) {
     if (err.name === "AbortError") return;
     // A thrown fetch (DNS/connection failure, unreachable API) rather than an
@@ -2002,6 +2234,20 @@ async function loadTracks({ quiet = false } = {}) {
   if (reqId !== tracksReq) return;
   if (!res.ok) {
     const body = await readBody(res);
+    // A token that was valid when this request went out but expired by the
+    // time the server saw it (or was invalidated in another tab): recover
+    // silently rather than showing an error screen for a filter the user
+    // will just see reset.
+    if (res.status === 422 && state.favoritesOnly && /favorited_only/i.test(detailText(body))) {
+      setAuthToken("");
+      authUser = null;
+      renderAuthUI();
+      state.favoritesOnly = false;
+      state.offset = 0;
+      finishTracksLoad(reqId);
+      renderFilters();
+      return loadTracks({ quiet: true });
+    }
     finishTracksLoad(reqId);
     renderTracksError({ title: "Couldn't load tracks", message: `The API answered with HTTP ${res.status}.`, detail: detailText(body) });
     return;
@@ -2216,6 +2462,7 @@ function syncFavoriteButtons(t) {
 }
 async function toggleFavorite(t) {
   if (!t || t.id == null || favoritePending.has(t.id)) return;
+  if (!authUser) { openLoginDialog(); return; }
   const prev = Boolean(t.favorited);
   const next = !prev;
   favoritePending.add(t.id);
@@ -2240,10 +2487,19 @@ async function toggleFavorite(t) {
     t.favorited = prev;
     syncFavoriteButtons(t);
     const e = err.status ? explainError(err.status, err.body, err) : explainError(0, {}, err);
-    toast({
-      kind: "error", title: e.title, message: e.message,
-      ...(e.action === "set-key" ? { actionLabel: "Set API key", onAction: openKeyDialog } : {}),
-    });
+    if (e.action === "login") {
+      // Token expired or was revoked mid-session — drop it and prompt again
+      // rather than leave the header claiming a login that no longer holds.
+      setAuthToken("");
+      authUser = null;
+      renderAuthUI();
+      toast({ kind: "error", title: e.title, message: e.message, actionLabel: "Log in", onAction: openLoginDialog });
+    } else {
+      toast({
+        kind: "error", title: e.title, message: e.message,
+        ...(e.action === "set-key" ? { actionLabel: "Set API key", onAction: openKeyDialog } : {}),
+      });
+    }
   } finally {
     favoritePending.delete(t.id);
   }
@@ -3302,6 +3558,7 @@ document.addEventListener("click", e => {
     viewSource(el.dataset.viewSource);
   } else if ((el = hit("[data-action]"))) {
     if (el.dataset.action === "set-key") openKeyDialog();
+    if (el.dataset.action === "login") openLoginDialog();
     if (el.dataset.action === "retry-tracks") { state.loaded = false; loadTracks(); }
   } else if ((el = hit("[data-goto]"))) {
     goTo(el.dataset.goto);
@@ -3329,6 +3586,7 @@ loadCatalog();
 showView(viewFromHash());
 loadTracks();
 loadStats();
+refreshAuthState();
 </script>
 
 </body>

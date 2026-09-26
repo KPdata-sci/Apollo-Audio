@@ -108,16 +108,14 @@ def test_each_sort_returns_rows_in_the_documented_order(sort):
     assert [r["id"] for r in rows] == [r["id"] for r in expected], f"sort={sort} out of order"
 
 
-def test_favorited_only_filter_returns_only_favorited_rows():
-    rows, total = warehouse.list_tracks(favorited_only=True, limit=200)
-    assert all(r["favorited"] for r in rows)
-    assert total == len(rows) or total > 200
-
-
-def test_favorited_only_is_a_stricter_subset_of_unfiltered():
-    _, favorited_total = warehouse.list_tracks(favorited_only=True, limit=1)
-    _, everything_total = warehouse.list_tracks(limit=1)
-    assert favorited_total <= everything_total
+def test_favorited_only_with_no_user_matches_nothing():
+    # favorited_only is meaningless without a real logged-in user — the
+    # actual per-user filtering behavior (and cross-user isolation) needs
+    # writable fixtures, so it's covered in test_favorites_integration.py
+    # instead of here (this file stays strictly read-only).
+    rows, total = warehouse.list_tracks(favorited_only=True, current_user_id=0, limit=200)
+    assert rows == []
+    assert total == 0
 
 
 def test_search_metacharacters_match_literally():

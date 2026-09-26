@@ -169,6 +169,12 @@ actual access-control lever once more than one identity shares it.
 - **The data lake write is wrapped in try/except** (`main.py`) — a disk-full
   or S3-unreachable failure now returns a clean `502` instead of an unhandled
   exception.
+- **Real per-user login for the like-list** (`auth.py`, `docs/API.md`'s
+  Authentication section) — unlike the API key above, this is actual
+  authentication, not a deterrent: Argon2id-hashed passwords, JWT access
+  tokens, no signup endpoint (accounts are operator-created via
+  `python -m app.create_user`). Only gates favoriting tracks — browsing,
+  search, and scraping are unchanged by this.
 
 **The API key's real limits** — worth understanding, not just enabling: the
 front end stores it in the browser's `localStorage` (set via the 🔑 button),
@@ -177,9 +183,13 @@ see it in view-source. But it's still a shared secret sent as a plain header
 — anyone who *does* have it (or intercepts unencrypted traffic) can call the
 write endpoints directly, and it does nothing to stop someone who already
 knows it from hammering `/scrape` in a loop. Treat it as "stops
-drive-by/automated abuse of a URL someone stumbled on," not "authentication."
-Real auth (per-user accounts, OAuth) is out of scope per your "open reads,
-gated writes" call — this is the lightweight version of that.
+drive-by/automated abuse of a URL someone stumbled on," not "authentication" —
+that's what it's a deliberately lightweight stand-in for, per your "open
+reads, gated writes" call. Real per-user authentication does now exist, just
+scoped to one feature: the like-list (favorites) is gated by an actual login
+(Argon2id-hashed password, JWT token — see "Real per-user login" above),
+not this shared static key. Scraping and browsing stay behind the API key's
+lighter deterrent rather than a full account system, on purpose.
 
 **Recommended next, not yet built:**
 - **Rotate `api_key` periodically** and after any point you suspect it leaked

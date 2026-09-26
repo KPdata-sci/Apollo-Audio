@@ -73,6 +73,19 @@ resource "kubernetes_deployment" "api" {
             }
           }
           env {
+            name = "APOLLO_JWT_SECRET"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.apollo.metadata[0].name
+                key  = "JWT_SECRET"
+              }
+            }
+          }
+          env {
+            name  = "APOLLO_JWT_EXPIRE_DAYS"
+            value = tostring(var.jwt_expire_days)
+          }
+          env {
             name  = "APOLLO_CORS_ORIGINS"
             value = var.cors_origins
           }

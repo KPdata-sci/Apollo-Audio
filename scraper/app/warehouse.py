@@ -50,8 +50,12 @@ def escape_like(term: str) -> str:
 # LEFT JOIN so a track with no favorites-row still comes back (favorited =
 # false) instead of being dropped from every listing. Bare column names below
 # (artist, title, id, playback_count, ...) are unambiguous against this join —
-# `favorites` only has track_id/created_at, never a name that collides.
-_FROM = "FROM tracks LEFT JOIN favorites f ON f.track_id = tracks.id"
+# `favorites` only has track_id/user_id/created_at, never a name that
+# collides. The join is scoped to one user (current_user_id) so "favorited"
+# always means "favorited by whoever's asking", never anyone else's list;
+# callers with no logged-in user pass 0, an id that can never exist, so the
+# join naturally matches nothing rather than needing NULL special-casing.
+_FROM = "FROM tracks LEFT JOIN favorites f ON f.track_id = tracks.id AND f.user_id = %(current_user_id)s"
 
 # `search` is a literal (case-insensitive) substring match: the user's term is
 # run through escape_like() before being wrapped in %...%.
@@ -111,6 +115,7 @@ def list_tracks(
     source_url: str = "",
     sort: str = "recent",
     favorited_only: bool = False,
+    current_user_id: int = 0,
 ) -> tuple[list[dict], int]:
     try:
         list_sql = _LIST_SQL_BY_SORT[sort]
@@ -123,6 +128,7 @@ def list_tracks(
         "genre": genre,
         "source_url": source_url,
         "favorited_only": favorited_only,
+        "current_user_id": current_user_id,
         "limit": limit,
         "offset": offset,
     }
@@ -264,38 +270,74 @@ def load_tracks(
     return len(rows)
 
 
-_ADD_FAVORITE_SQL = "INSERT INTO favorites (track_id) VALUES (%(track_id)s) ON CONFLICT (track_id) DO NOTHING"
-_REMOVE_FAVORITE_SQL = "DELETE FROM favorites WHERE track_id = %(track_id)s"
+_ADD_FAVORITE_SQL = """
+INSERT INTO favorites (user_id, track_id) VALUES (%(user_id)s, %(track_id)s)
+ON CONFLICT (user_id, track_id) DO NOTHING
+"""
+_REMOVE_FAVORITE_SQL = "DELETE FROM favorites WHERE user_id = %(user_id)s AND track_id = %(track_id)s"
 _TRACK_EXISTS_SQL = "SELECT 1 FROM tracks WHERE id = %(track_id)s"
 
 
-def add_favorite(track_id: int) -> bool:
-    """Marks a track as favorited. Idempotent — favoriting an already-favorited
-    track is a no-op, not an error (`ON CONFLICT DO NOTHING`), since the caller
-    only cares that it ends up favorited, not whether this call was the one
-    that did it. Returns False when no track with this id exists, so the
-    caller can turn that into a 404 rather than silently favoriting nothing."""
+def add_favorite(user_id: int, track_id: int) -> bool:
+    """Marks a track as favorited by this user. Idempotent — favoriting an
+    already-favorited track is a no-op, not an error (`ON CONFLICT DO
+    NOTHING`), since the caller only cares that it ends up favorited, not
+    whether this call was the one that did it. Returns False when no track
+    with this id exists, so the caller can turn that into a 404 rather than
+    silently favoriting nothing."""
     with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(_TRACK_EXISTS_SQL, {"track_id": track_id})
             if cur.fetchone() is None:
                 return False
-            cur.execute(_ADD_FAVORITE_SQL, {"track_id": track_id})
+            cur.execute(_ADD_FAVORITE_SQL, {"user_id": user_id, "track_id": track_id})
         conn.commit()
-    logger.debug("add_favorite(%d)", track_id)
+    logger.debug("add_favorite(user_id=%d, track_id=%d)", user_id, track_id)
     return True
 
 
-def remove_favorite(track_id: int) -> bool:
-    """Un-favorites a track. Same idempotent shape as add_favorite: removing a
-    favorite that was never set is a no-op, not an error. Returns False only
-    when no track with this id exists at all."""
+def remove_favorite(user_id: int, track_id: int) -> bool:
+    """Un-favorites a track for this user. Same idempotent shape as
+    add_favorite: removing a favorite that was never set is a no-op, not an
+    error. Returns False only when no track with this id exists at all."""
     with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(_TRACK_EXISTS_SQL, {"track_id": track_id})
             if cur.fetchone() is None:
                 return False
-            cur.execute(_REMOVE_FAVORITE_SQL, {"track_id": track_id})
+            cur.execute(_REMOVE_FAVORITE_SQL, {"user_id": user_id, "track_id": track_id})
         conn.commit()
-    logger.debug("remove_favorite(%d)", track_id)
+    logger.debug("remove_favorite(user_id=%d, track_id=%d)", user_id, track_id)
     return True
+
+
+_GET_USER_BY_USERNAME_SQL = "SELECT id, username, password_hash FROM users WHERE username = %(username)s"
+_INSERT_USER_SQL = "INSERT INTO users (username, password_hash) VALUES (%(username)s, %(password_hash)s) RETURNING id"
+_FAVORITES_COUNT_SQL = "SELECT count(*) AS n FROM favorites WHERE user_id = %(user_id)s"
+
+
+def get_user_by_username(username: str) -> dict | None:
+    """Row includes password_hash — callers verify it (see app/auth.py) and
+    must never put it in a response body or log line."""
+    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+        row = conn.execute(_GET_USER_BY_USERNAME_SQL, {"username": username}).fetchone()
+    return row
+
+
+def insert_user(username: str, password_hash: str) -> int:
+    """Used only by app/create_user.py — there is no HTTP signup endpoint
+    (see CLAUDE.md for why). Raises psycopg.errors.UniqueViolation for a
+    username that's already taken; the caller turns that into a clear CLI
+    error rather than a stack trace."""
+    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(_INSERT_USER_SQL, {"username": username, "password_hash": password_hash})
+            user_id = cur.fetchone()["id"]
+        conn.commit()
+    logger.info("Created user %r (id=%d)", username, user_id)
+    return user_id
+
+
+def count_favorites(user_id: int) -> int:
+    with psycopg.connect(settings.warehouse_dsn, row_factory=dict_row) as conn:
+        return conn.execute(_FAVORITES_COUNT_SQL, {"user_id": user_id}).fetchone()["n"]

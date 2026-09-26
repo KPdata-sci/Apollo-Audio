@@ -38,6 +38,13 @@ postgres_password = "change-me"
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
 api_key = "change-me"
 
+# Signs login tokens (see app/auth.py, docs/API.md's Authentication section).
+# Required for logins to survive a pod restart — leave unset and the api
+# Deployment generates a random one at startup instead (fine for a quick
+# test, wrong for anything real). Generate with:
+# python -c "import secrets; print(secrets.token_hex(32))"
+jwt_secret = "change-me"
+
 # Scheduled ingest (scraper/app/ingest.py) — comma-separated soundcloud.com
 # playlist/profile URLs, scraped automatically on ingest_schedule (default:
 # once a day). Empty (off) by default — pick some from the

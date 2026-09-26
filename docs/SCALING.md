@@ -23,15 +23,33 @@ expensive, and overkill just to refresh two numbers.
   a schedule via `REFRESH MATERIALIZED VIEW CONCURRENTLY`) turns that into a
   pre-sorted read instead of a live sort every request.
 
-## Favorites are single-tenant by design, for now
+## Accounts and favorites, past the current design
 
-`favorites` has no `user_id` — one shared list, matching the rest of this
-app's no-accounts design (see `CLAUDE.md`). If that ever needs to change
-(e.g. separate "mine" vs. "household" favorites), the schema extends rather
-than migrates: add a `user_id` (a real account id, or just a
-cookie-stored anonymous device id — no need to build full auth for this
-specifically) into `favorites`' primary key alongside `track_id`. Nothing
-elsewhere in the app assumes a single row per track.
+Favorites are now per-user (`favorites` keyed on `(user_id, track_id)` — see
+`CLAUDE.md`'s Authentication section), but deliberately minimal past that:
+
+- **Multiple named lists per user** ("Chill", "Workout") isn't built — one
+  like-list per user is what got asked for. If that changes, it's an
+  additive schema change (a `lists` table, `favorites` gaining a `list_id`
+  alongside `user_id`), not a rework of what exists.
+- **No password reset** — there's no email-sending infrastructure anywhere
+  in this app, so a real reset flow needs that built first (or an
+  operator-run `python -m app.create_user`-style reset script as a stopgap,
+  which needs no new infrastructure at all).
+- **Multi-replica JWT secret**: `APOLLO_JWT_SECRET` must be the same value
+  across every replica of the `api` Deployment (it already is, via the same
+  k8s Secret every replica reads — see `infra/terraform-k8s/secrets.tf`) —
+  but if that value is ever left unset, `auth.py` mints a random one *per
+  process*, so replica A would reject tokens replica B issued. Harmless
+  today (this Deployment is pinned to 1 replica — see `api.tf`), worth
+  remembering if that ever changes.
+- **No token revocation**: a JWT is valid until it expires — there's no
+  server-side session to invalidate early (e.g. "log out everywhere"). Adding
+  that means either a denylist table checked on every request (a new DB
+  round-trip per request, work rather than storage that's added) or
+  shortening `APOLLO_JWT_EXPIRE_DAYS` and accepting more frequent logins —
+  not worth building until "log out everywhere" is an actual need, not a
+  hypothetical one.
 
 ## Postgres access patterns
 

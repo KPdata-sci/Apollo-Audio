@@ -33,6 +33,19 @@ variable "api_key" {
   default     = ""
 }
 
+variable "jwt_secret" {
+  description = "Signs/verifies login JWTs (app/auth.py). Leave empty only for a throwaway deployment — the api Deployment generates a random one at startup instead, which invalidates every login on the next restart and isn't shared across replicas. Set via terraform.tfvars (gitignored) or TF_VAR_jwt_secret, never commit a real value. Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "jwt_expire_days" {
+  description = "How long a login stays valid before a user has to log in again."
+  type        = number
+  default     = 30
+}
+
 variable "cors_origins" {
   description = "Comma-separated list of origins allowed to call the API cross-origin (needed because the frontend now runs as a separate Service/origin from the API). Default \"*\" is fine for read endpoints; tighten it to the frontend's actual URL once that's stable."
   type        = string

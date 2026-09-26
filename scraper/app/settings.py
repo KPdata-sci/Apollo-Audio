@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # APOLLO_API_KEY — never commit a real value.
     api_key: str = ""
 
+    # Signs/verifies login JWTs (see app/auth.py). Empty (the default) makes
+    # main.py generate a random one at startup instead — fine for a quick
+    # local run, wrong for anything meant to survive a restart (every
+    # previously-issued token stops verifying) or run more than one replica
+    # of (each would mint its own secret). Set via APOLLO_JWT_SECRET before
+    # relying on logins sticking — never commit a real value.
+    jwt_secret: str = ""
+    # How long a login stays valid before a user has to log in again.
+    jwt_expire_days: int = 30
+
     # Comma-separated list of origins allowed to call this API cross-origin
     # (needed once the front end is served from a different origin than the
     # API — see frontend/). "*" (default) allows any origin, which is fine for

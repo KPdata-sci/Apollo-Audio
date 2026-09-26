@@ -50,3 +50,38 @@ CREATE TABLE IF NOT EXISTS favorites (
     track_id    INTEGER PRIMARY KEY REFERENCES tracks (id) ON DELETE CASCADE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- User accounts. No public signup (see CLAUDE.md) — rows are created by hand
+-- via `python -m app.create_user`, never through an HTTP endpoint.
+-- password_hash is an Argon2id-encoded string (app/auth.py) — the salt lives
+-- inside that string itself (standard PHC format), not a separate column.
+CREATE TABLE IF NOT EXISTS users (
+    id            SERIAL PRIMARY KEY,
+    username      VARCHAR(64) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (username)
+);
+
+-- Favorites started as one shared, unauthenticated list (track_id alone as
+-- the primary key) and become per-user here. Restructuring an existing
+-- table's primary key is only safe while it's empty, so this checks rather
+-- than assumes: it no-ops if user_id already exists (already migrated), and
+-- fails loudly instead of silently corrupting data if the table somehow has
+-- rows with no owner to assign them to.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'favorites' AND column_name = 'user_id'
+    ) THEN
+        IF EXISTS (SELECT 1 FROM favorites LIMIT 1) THEN
+            RAISE EXCEPTION
+                'favorites has existing rows with no user_id to assign them to — this table was expected to be empty before the per-user migration; resolve manually before re-running.';
+        END IF;
+        ALTER TABLE favorites ADD COLUMN user_id INTEGER REFERENCES users (id) ON DELETE CASCADE;
+        ALTER TABLE favorites ALTER COLUMN user_id SET NOT NULL;
+        ALTER TABLE favorites DROP CONSTRAINT favorites_pkey;
+        ALTER TABLE favorites ADD PRIMARY KEY (user_id, track_id);
+    END IF;
+END $$;

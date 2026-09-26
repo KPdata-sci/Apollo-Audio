@@ -48,6 +48,11 @@ services:
       # header when set. Empty (default) leaves them open, same as before this
       # existed — set it before exposing this beyond your own machine.
       APOLLO_API_KEY: ${APOLLO_API_KEY:-}
+      # Signs login tokens (see app/auth.py). Empty (default) is fine for a
+      # quick local run — a random one is generated at startup instead — but
+      # every login stops working on the next restart until you set this.
+      APOLLO_JWT_SECRET: ${APOLLO_JWT_SECRET:-}
+      APOLLO_JWT_EXPIRE_DAYS: ${APOLLO_JWT_EXPIRE_DAYS:-30}
       # Origins allowed to call this API cross-origin, comma-separated, or "*".
       # Only matters once the frontend container below is on a different
       # origin than this one.

@@ -176,7 +176,31 @@ track has no artwork of its own, and — for a profile/stream page track
 attributed to its owner via `_hydration_profile_owner` — to that owner's
 avatar, so a track essentially never ends up with no image at all. `sort=popular`
 on `GET /api/tracks` orders by `coalesce(playback_count, 0) DESC`, so an
-unknown count sorts last rather than being excluded. Favorites live in their own `favorites` table
+unknown count sorts last rather than being excluded.
+
+**Authentication** (`auth.py`, `create_user.py`): real per-user login exists,
+but only gates the like-list — browsing, search, stats, and scraping are
+unchanged (open reads, `require_api_key`-gated writes, as above). Passwords
+are hashed with Argon2id (`argon2-cffi`; the salt lives inside the encoded
+hash string itself, not a separate column — normal for this style of
+library). Logins are JWTs (`pyjwt`, HS256, signed with `APOLLO_JWT_SECRET`;
+if that's unset, `auth.py` generates a random one at process start and
+`main.py`'s `lifespan()` warns loudly, since that secret not surviving a
+restart means every login stops working). There is **no signup endpoint** —
+accounts only come from `python -m app.create_user <username>` (prompts for
+a password, never takes one as an argument or env var) — a deliberate
+restriction, not a missing feature, since this app has no email/verification
+infrastructure to safely gate open self-registration. `favorites` is keyed
+on `(user_id, track_id)`; `GET /api/tracks` takes an *optional* login (via
+`get_current_user_optional`) so `favorited` reflects whoever's asking without
+requiring one, while `POST`/`DELETE /api/tracks/{id}/favorite` and
+`favorited_only=true` require one (`get_current_user` / a 422) since acting
+on "whose list" without an identity doesn't mean anything. JWTs travel as a
+client-stored `Authorization: Bearer` header rather than a cookie — this
+app's frontend/API are different origins with no TLS termination anywhere in
+this stack, so a cross-origin `Secure` cookie isn't viable without a TLS
+project first; see `docs/EDGE_SECURITY.md` for the trade-off that choice
+carries (a token in `localStorage` vs. an `httpOnly` cookie). Favorites live in their own `favorites` table
 (`track_id` PK, `ON DELETE CASCADE`) rather than a column on `tracks` — a
 column would need special-casing in the upsert's `ON CONFLICT DO UPDATE` to
 avoid a rescrape silently un-favoriting a track every time it resurfaces;
