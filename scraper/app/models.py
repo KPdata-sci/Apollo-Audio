@@ -17,6 +17,8 @@ class Track(BaseModel):
     genre: str | None = None
     url: str | None = None
     downloadable: bool = False
+    playback_count: int | None = None
+    likes_count: int | None = None
 
 
 class ScrapeResult(BaseModel):
@@ -34,6 +36,9 @@ class TrackRow(BaseModel):
     genre: str | None = None
     url: str | None = None
     downloadable: bool = False
+    playback_count: int | None = None
+    likes_count: int | None = None
+    favorited: bool = False
     source_url: str
     scraped_at: datetime
 
@@ -59,9 +64,15 @@ class SourceSummary(BaseModel):
 class WarehouseStats(BaseModel):
     total_tracks: int
     total_sources: int
+    total_favorites: int
     last_scraped_at: datetime | None = None
     genres: list[GenreCount]
     sources: list[SourceSummary]
+
+
+class FavoriteResult(BaseModel):
+    id: int
+    favorited: bool
 
 
 class PlaylistEntry(BaseModel):

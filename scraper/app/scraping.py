@@ -173,6 +173,11 @@ def _track_from_hydration(track: dict) -> dict:
         # frontend only shows a download link when this is true, and even then
         # links out to SoundCloud's own page rather than us serving the file.
         "downloadable": bool(track.get("downloadable")),
+        # SoundCloud's own popularity counters — DOM parsing has no signal for
+        # these (same as downloadable), so they stay None until/unless
+        # hydration enrichment fills them in below.
+        "playback_count": track.get("playback_count"),
+        "likes_count": track.get("likes_count"),
     }
 
 
@@ -239,6 +244,8 @@ def _parse_dom(html: str) -> list[dict]:
                 "genre": genre_tag.get_text(strip=True) if genre_tag else None,
                 "url": track_url,
                 "downloadable": False,  # DOM has no signal for this — only hydration enrichment sets it true
+                "playback_count": None,  # ditto — only hydration enrichment (below) fills these in
+                "likes_count": None,
             }
         )
     return records
@@ -270,6 +277,8 @@ def parse_html(html: str, hydration: list | None, source_url: str) -> list[dict]
             record["artist"] = enrichment["artist"]
             record["genre"] = enrichment["genre"]
             record["downloadable"] = enrichment["downloadable"]
+            record["playback_count"] = enrichment["playback_count"]
+            record["likes_count"] = enrichment["likes_count"]
         elif not record.get("artist"):
             # No per-track username in the DOM and no hydration entry for this
             # track (e.g. a profile/stream page — see _hydration_profile_owner).

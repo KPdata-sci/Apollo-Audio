@@ -49,7 +49,7 @@ jobs:
           cache-dependency-path: scraper/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r scraper/requirements.txt pytest httpx
+        run: pip install -r scraper/requirements.txt pytest httpx pytest-cov
 
       - name: Apply warehouse schema
         env:
@@ -65,7 +65,9 @@ jobs:
           APOLLO_WAREHOUSE_DSN: postgresql://apollo:apollo@localhost:5432/apollo
         run: |
           cd scraper
-          python -m pytest tests -q
+          # Coverage is informational (shown in the job log), not a gate —
+          # no --cov-fail-under, since no coverage baseline has been agreed on.
+          python -m pytest tests -q --cov=app --cov-report=term-missing
 
   # ---------------------------------------------------------------------
   # Terraform validation. infra/terraform-k8s/ is the real, apply-able (if
@@ -136,3 +138,54 @@ jobs:
           push: false
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+  # ---------------------------------------------------------------------
+  # Boots the real docker-compose stack (postgres + api + frontend) and
+  # exercises it over HTTP — catches what the unit tests above can't: a
+  # broken Dockerfile CMD, a wrong port/env mapping, a migration that
+  # doesn't actually apply, or the frontend's nginx config not serving the
+  # page at all. Every env var docker-compose.yml reads has a default (see
+  # that file), so this needs no secrets and no .env — and the postgres
+  # volume is always fresh here, so init.sql's CREATE TABLE path runs for
+  # real rather than the ALTER-TABLE migration path a long-lived dev volume
+  # takes. Gated on `test` passing first so a known-broken build doesn't
+  # also spend runner time booting containers.
+  # ---------------------------------------------------------------------
+  compose-smoke:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for the API to report healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health; then exit 0; fi
+            sleep 2
+          done
+          echo "API never became healthy within the timeout" >&2
+          exit 1
+
+      - name: Exercise the real endpoints end-to-end
+        run: |
+          curl -sf http://localhost:8000/api/stats
+          curl -sf http://localhost:8000/api/playlists
+          curl -sf http://localhost:8080/ | grep -qi "<html"
+          # Favorites endpoint, wired through the real container against a
+          # freshly-migrated (so definitely empty) database — 404 is the
+          # correct response for a track id that can't exist yet, and
+          # confirms the route/dependency wiring works outside the unit
+          # tests' mocked warehouse.
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/tracks/1/favorite)
+          test "$status" = "404"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

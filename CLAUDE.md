@@ -163,6 +163,28 @@ out blanks and `#`-hashtag spam. Every genre it returns must round-trip as
 `/api/tracks?genre=` with the same count. `tests/test_warehouse_integration.py`
 checks this read-only against a real DB, and skips when none is reachable.
 
+**Popularity and favorites**: `playback_count`/`likes_count` come from the
+same hydration state as `genre`/`downloadable` (see `_track_from_hydration`
+in `scraping.py`), so they share its limitation — populated on playlist/set
+pages, always `null` on profile/stream pages (no per-track hydration there at
+all). `sort=popular` on `GET /api/tracks` orders by
+`coalesce(playback_count, 0) DESC`, so an unknown count sorts last rather
+than being excluded. Favorites live in their own `favorites` table
+(`track_id` PK, `ON DELETE CASCADE`) rather than a column on `tracks` — a
+column would need special-casing in the upsert's `ON CONFLICT DO UPDATE` to
+avoid a rescrape silently un-favoriting a track every time it resurfaces;
+`playback_count`/`likes_count`, by contrast, are fine to overwrite on every
+rescrape since they're just SoundCloud's live numbers, not a decision someone
+made in this app. No user table (no accounts anywhere in this app) — one
+shared favorites list, gated the same as `/scrape` (`require_api_key`).
+`tests/test_favorites_integration.py` is the write-based counterpart to
+`test_warehouse_integration.py` above — kept separate so that file can stay
+strictly read-only against a database that may hold real scraped data; it
+creates and tears down its own disposable track rows instead. See
+`docs/SCALING.md` for where this is expected to need more than a single
+shared Postgres table (per-user favorites, cheaper popularity refresh,
+connection pooling, etc.) if it ever needs to.
+
 **`docker-compose.yml`**: `COMPOSE_PROJECT_NAME` is pinned in `.env`. If this
 project's directory ever gets renamed or moved, keep that pin — otherwise
 Compose derives a different project name from the new folder name and spins
@@ -175,15 +197,18 @@ possible future reference only). `terraform-k8s/` is real and
 to a k3s host — including a `CronJob` for scheduled ingest
 (`infra/terraform-k8s/ingest-cronjob.tf`, see "Scheduled ingest" above).
 
-**CI** (`.github/workflows/ci.yml`): runs on every push/PR — the test suite
-against a real `postgres:16-alpine` service container (not mocked, so
-`test_warehouse_integration.py`'s DB-dependent tests actually run), `terraform
-fmt`/`validate` for `terraform-k8s` (`terraform-aws` is checked too but
-`continue-on-error: true`, since its own README documents it as an unfinished,
-known-broken sketch), and a build of both Docker images as a smoke test (no
-push). CD — actually rolling this out to the k3s VM — stays a manual,
-documented step (see `docs/CI_CD.md`) because GitHub-hosted runners can't
-reach a Tailscale-only host.
+**CI** (`.github/workflows/ci.yml`, see `docs/CI_CD.md` for the full
+breakdown): runs on every push/PR, as four jobs — the test suite (with
+coverage reported, not gated) against a real `postgres:16-alpine` service
+container (not mocked, so the DB-dependent integration tests actually run);
+`terraform fmt`/`validate` for `terraform-k8s` (`terraform-aws` is checked too
+but `continue-on-error: true`, since its own README documents it as an
+unfinished, known-broken sketch); a build of both Docker images as a smoke
+test (no push); and `compose-smoke`, which boots the real `docker compose`
+stack and hits it over actual HTTP — the level between a bare image build and
+the mocked unit tests, catching wiring bugs neither of those can see. CD —
+actually rolling this out to the k3s VM — stays a manual, documented step
+because GitHub-hosted runners can't reach a Tailscale-only host.
 
 ## Known rough edges (see README "Known limitations" for the full list)
 
