@@ -186,6 +186,28 @@ jobs:
             -H "Content-Type: application/json" -d '{"username": "nobody", "password": "whatever"}')
           test "$status" = "401"
 
+      - name: Trigger a real scrape through the async job API and wait for it
+        # Exercises POST /scrape's actual submit-and-poll contract end-to-end
+        # (202 + job_id, then polling GET /api/scrape/jobs/{id}) against the
+        # real container — and, as a side effect, seeds the otherwise-empty
+        # database so the frontend smoke test below has something to render.
+        run: |
+          job_id=$(curl -sf -X POST http://localhost:8000/scrape -H "Content-Type: application/json" \
+            -d '{"url": "https://soundcloud.com/soundcloud-uk/sets/bassbin-fresh-drum-and-bass"}' | python3 -c "import json,sys; print(json.load(sys.stdin)['job_id'])")
+          for i in $(seq 1 30); do
+            status=$(curl -sf "http://localhost:8000/api/scrape/jobs/$job_id" | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")
+            [ "$status" = "done" ] && break
+            [ "$status" = "error" ] && { echo "scrape job errored" >&2; curl -s "http://localhost:8000/api/scrape/jobs/$job_id" >&2; exit 1; }
+            sleep 3
+          done
+          test "$status" = "done"
+
+      - name: Frontend smoke test (real browser against the real stack)
+        run: |
+          pip install -q pytest pytest-playwright
+          playwright install --with-deps chromium
+          APOLLO_FRONTEND_URL=http://localhost:8080 python -m pytest scraper/tests/test_frontend_smoke.py -q
+
       - name: Show container logs on failure
         if: failure()
         run: docker compose logs

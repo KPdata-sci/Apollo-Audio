@@ -178,6 +178,18 @@ def _hydration_playlist_tracks(hydration: list | None) -> list[dict]:
     return playlist.get("tracks", []) if playlist else []
 
 
+def _hydration_single_track(hydration: list | None) -> dict | None:
+    """A track's own page (as opposed to a playlist/set page) hydrates it
+    directly as a top-level `hydratable: "sound"` entry, not nested under a
+    "playlist" entry's `tracks` list — verified against a real page. Used by
+    the cheap metadata-refresh path (pipeline.py::refresh_track_metadata),
+    which fetches one track's own page instead of a whole source playlist
+    just to pick up its current playback_count/likes_count/artwork_url."""
+    if not hydration:
+        return None
+    return next((e.get("data") for e in hydration if e.get("hydratable") == "sound"), None)
+
+
 def _track_from_hydration(track: dict) -> dict:
     return {
         "title": track.get("title") or "",
@@ -199,6 +211,28 @@ def _track_from_hydration(track: dict) -> dict:
         # means a track never ends up with no image at all just because the
         # uploader didn't bother setting per-track art.
         "artwork_url": _upsize_artwork(track.get("artwork_url") or (track.get("user") or {}).get("avatar_url")),
+    }
+
+
+async def fetch_track_metadata(url: str) -> dict | None:
+    """Cheap alternative to a full scrape for refreshing just one existing
+    track's playback_count/likes_count/artwork_url. Fetches the track's own
+    page — a single, non-scrolling page whose hydration settles without
+    needing fetch_html's scroll loop to run more than its first no-op
+    iteration — instead of re-scraping whatever source playlist it originally
+    came from (which may have rotated, or no longer be the most convenient
+    way to reach this one track). Returns None when the page yields no
+    per-track hydration at all (removed, blocked, moved) — the caller treats
+    that as "nothing to update," not an error."""
+    _, hydration = await fetch_html(url)
+    sound = _hydration_single_track(hydration)
+    if not sound:
+        return None
+    track = _track_from_hydration(sound)
+    return {
+        "playback_count": track["playback_count"],
+        "likes_count": track["likes_count"],
+        "artwork_url": track["artwork_url"],
     }
 
 

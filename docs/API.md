@@ -34,44 +34,87 @@ Liveness check. Always returns `{"status": "ok"}` if the process is up — doesn
 
 ## `POST /scrape`
 
-Scrapes a SoundCloud playlist, set, or profile page, lands the raw result in the data lake, then upserts it into the warehouse.
-
-Takes ~10-60 seconds — it drives a real headless browser and scrolls the page to trigger SoundCloud's own lazy-loading before reading the result.
+Starts scraping a SoundCloud playlist, set, or profile page — lands the raw
+result in the data lake, then upserts it into the warehouse, same as always.
+**Returns immediately** (`202`) with a job id rather than waiting for the
+scrape to finish; poll `GET /api/scrape/jobs/{job_id}` (below) for the
+result. The scrape itself still takes ~10-60s (a real headless browser,
+scrolling the page to trigger SoundCloud's own lazy-loading) — that work now
+happens after the response goes out, not before it.
 
 **Request body**
 ```json
 {"url": "https://soundcloud.com/<artist>/sets/<playlist>"}
 ```
 
-**Response `200`**
+**Response `202`**
+```json
+{"job_id": "7ab6c747851246858d7f47b72c25568c", "status": "queued"}
+```
+
+**Errors** (only for a request that's rejected before a job is even created)
+| Status | When |
+|---|---|
+| `401` | `APOLLO_API_KEY` is set and the request's `X-API-Key` header is missing or wrong. |
+| `422` | The URL isn't a `soundcloud.com` URL. |
+| `429` | Rate limit exceeded (10 requests/minute, keyed by `X-API-Key` when set, otherwise by IP). |
+
+---
+
+## `GET /api/scrape/jobs/{job_id}`
+
+Poll this after `POST /scrape` until `status` is `done` or `error`.
+
+**Response `200`** — while running:
+```json
+{"job_id": "7ab6...", "status": "running", "result": null, "error": null}
+```
+Once finished:
 ```json
 {
-  "source_url": "https://soundcloud.com/<artist>/sets/<playlist>",
-  "scraped_at": "2026-09-25T12:39:15.984000Z",
-  "track_count": 59,
-  "lake_object_key": "raw/soundcloud/2026/09/25/123915_<artist>_sets_<playlist>.json",
-  "tracks": [
-    {
-      "title": "...",
-      "artist": "...",
-      "genre": "Drum & Bass",
-      "url": "https://soundcloud.com/...",
-      "downloadable": false,
-      "playback_count": 14555,
-      "likes_count": 560,
-      "artwork_url": "https://i1.sndcdn.com/artworks-<id>-t500x500.jpg"
-    }
-  ]
+  "job_id": "7ab6...",
+  "status": "done",
+  "result": {
+    "source_url": "https://soundcloud.com/<artist>/sets/<playlist>",
+    "scraped_at": "2026-09-25T12:39:15.984000Z",
+    "track_count": 59,
+    "lake_object_key": "raw/soundcloud/2026/09/25/123915_<artist>_sets_<playlist>.json",
+    "tracks": [
+      {
+        "title": "...",
+        "artist": "...",
+        "genre": "Drum & Bass",
+        "url": "https://soundcloud.com/...",
+        "downloadable": false,
+        "playback_count": 14555,
+        "likes_count": 560,
+        "artwork_url": "https://i1.sndcdn.com/artworks-<id>-t500x500.jpg"
+      }
+    ]
+  },
+  "error": null
 }
 ```
+Or, if the scrape itself failed (what used to come back as `POST /scrape`'s
+own error response, before this endpoint existed):
+```json
+{
+  "job_id": "7ab6...",
+  "status": "error",
+  "result": null,
+  "error": {
+    "status_code": 422,
+    "detail": "SoundCloud says this page requires being logged in as its owner. ..."
+  }
+}
+```
+`error.status_code` is exactly the status `POST /scrape` used to return
+directly: `422` (login-required page) or `502` (fetch/lake-write failure).
 
 **Errors**
 | Status | When |
 |---|---|
-| `401` | `APOLLO_API_KEY` is set and the request's `X-API-Key` header is missing or wrong. |
-| `422` | The URL isn't a `soundcloud.com` URL, or SoundCloud's own page says this requires being logged in as its owner (e.g. a personal Discover Weekly — see `APOLLO_SOUNDCLOUD_COOKIES` in `.env.example`). |
-| `429` | Rate limit exceeded (10 requests/minute, keyed by `X-API-Key` when set, otherwise by IP). |
-| `502` | The headless browser failed to load the page at all after retries (timeout, network error, SoundCloud unreachable), or the result failed to write to the data lake. |
+| `404` | No job with this id — it never existed, or it's aged out (only the most recent ~200 jobs are kept in memory). |
 
 `downloadable` is only ever `true` when SoundCloud's own data says the uploader enabled downloads for that specific track — it is never inferred. The front end uses it to decide whether to show a download link at all; that link always points at the track's own SoundCloud page (this API never serves or proxies audio files).
 

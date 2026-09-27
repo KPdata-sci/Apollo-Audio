@@ -1,7 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from app.scraping import _upsize_artwork, discover_playlists, parse_html
+from app.scraping import _upsize_artwork, discover_playlists, fetch_track_metadata, parse_html
 
 PROFILE_SETS_HTML = """
 <html><body>
@@ -246,3 +246,48 @@ def test_discover_playlists_extracts_cards_and_skips_non_playlist_links(mock_fet
     ]
     # Appends /sets to a bare profile URL rather than requiring the caller to know that.
     mock_fetch.assert_called_once_with("https://soundcloud.com/someartist/sets")
+
+
+@patch("app.scraping.fetch_html", new_callable=AsyncMock)
+def test_fetch_track_metadata_reads_the_sound_hydration_entry(mock_fetch):
+    # A track's own page hydrates it as a top-level "sound" entry, not
+    # nested under a "playlist" entry's tracks list — verified against a
+    # real SoundCloud page (see _hydration_single_track's docstring).
+    hydration = [
+        {"hydratable": "user", "data": {"username": "Someone"}},
+        {
+            "hydratable": "sound",
+            "data": {
+                "title": "A Track",
+                "playback_count": 14661,
+                "likes_count": 562,
+                "artwork_url": "https://i1.sndcdn.com/artworks-abc-0-large.jpg",
+                "permalink_url": "https://soundcloud.com/someone/a-track",
+            },
+        },
+    ]
+    mock_fetch.return_value = ("<html></html>", hydration)
+
+    metadata = asyncio.run(fetch_track_metadata("https://soundcloud.com/someone/a-track"))
+
+    assert metadata == {
+        "playback_count": 14661,
+        "likes_count": 562,
+        "artwork_url": "https://i1.sndcdn.com/artworks-abc-0-t500x500.jpg",
+    }
+    mock_fetch.assert_called_once_with("https://soundcloud.com/someone/a-track")
+
+
+@patch("app.scraping.fetch_html", new_callable=AsyncMock)
+def test_fetch_track_metadata_returns_none_without_a_sound_entry(mock_fetch):
+    # Page removed/blocked/moved — no "sound" hydration entry at all.
+    mock_fetch.return_value = ("<html>gone</html>", [{"hydratable": "user", "data": {}}])
+
+    assert asyncio.run(fetch_track_metadata("https://soundcloud.com/someone/a-track")) is None
+
+
+@patch("app.scraping.fetch_html", new_callable=AsyncMock)
+def test_fetch_track_metadata_returns_none_with_no_hydration_at_all(mock_fetch):
+    mock_fetch.return_value = ("<html></html>", None)
+
+    assert asyncio.run(fetch_track_metadata("https://soundcloud.com/someone/a-track")) is None

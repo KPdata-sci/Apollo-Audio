@@ -35,7 +35,16 @@ Runs on every push and PR to any branch, as four jobs:
   the level below **test** and above **docker-build** — it catches a
   container that builds fine but is wired wrong (bad `CMD`, wrong port/env
   mapping, a migration that silently didn't apply), which mocked unit tests
-  and a bare image build can't see.
+  and a bare image build can't see. It then triggers one real scrape through
+  `POST /scrape`'s actual submit-and-poll contract (202 + job id, polled via
+  `GET /api/scrape/jobs/{id}` until done) — real network access to
+  SoundCloud, exercising the async job model end-to-end rather than through
+  a mock — which both verifies that flow for real and seeds the otherwise-
+  empty database for the last step: `tests/test_frontend_smoke.py`, a real
+  Chromium browser (via `pytest-playwright`, installed only in this job —
+  never added to `scraper/requirements.txt`, so the production image never
+  carries it) driving the actual frontend page (load the library, search,
+  press play) rather than just its API.
 
 ## Why CD is manual today
 

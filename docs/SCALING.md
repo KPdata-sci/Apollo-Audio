@@ -4,19 +4,25 @@ Options for the day this stops being "a few hundred tracks on one Postgres
 instance." Nothing here is built — this is a menu to pick from once a
 specific bottleneck actually shows up, not work to do preemptively.
 
-## Popularity data goes stale between scrapes
+## Popularity data goes stale between scrapes — built
 
-`playback_count`/`likes_count` are only ever as fresh as the last full
-scrape (see `docs/CRAWLER_DESIGN.md` for why re-scraping isn't automatic or
-frequent). A full `/scrape` re-drives a real headless browser and scroll —
-expensive, and overkill just to refresh two numbers.
+`playback_count`/`likes_count`/`artwork_url` used to only ever be as fresh as
+the last full scrape (see `docs/CRAWLER_DESIGN.md` for why re-scraping isn't
+automatic or frequent) — a full `/scrape` re-drives a real headless browser
+and scroll, expensive and overkill just to refresh three numbers.
 
-- **Cheaper refresh path**: SoundCloud exposes track metadata (including
-  `playback_count`/`likes_count`) through lighter-weight requests than a full
-  page load — e.g. its `oembed`/`resolve` endpoints. A second, cheap ingest
-  mode that just re-fetches known track urls and updates those two columns
-  (no `Playwright`, no scrolling) could run far more often than the existing
-  `CronJob` (hourly instead of daily) without the cost of a full rescrape.
+- **Cheaper refresh path — built**: a track's own page hydrates it directly
+  (verified against a real page — no SoundCloud `oembed`/`resolve` API
+  needed, avoiding a new external dependency and its own ToS considerations),
+  so `scraping.py::fetch_track_metadata` fetches just that one page instead
+  of re-scraping whatever source playlist the track came from — no
+  scrolling, no re-processing every other track from that source.
+  `app/refresh_metadata.py` (a `python -m app.X` CLI, same shape as
+  `ingest.py`) runs this against a bounded, oldest-refreshed-first batch
+  (`APOLLO_METADATA_REFRESH_BATCH`, default 50) on its own CronJob
+  (`refresh-metadata-cronjob.tf`, every 6 hours by default) — frequent
+  enough to matter, bounded enough that one run stays quick, and the whole
+  table cycles through gradually across runs.
 - **Materialized ranking**: once the `tracks` table is large enough that
   `ORDER BY coalesce(playback_count, 0) DESC` over the whole table shows up
   in query latency, a small `popular_tracks` materialized view (refreshed on

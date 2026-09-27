@@ -36,6 +36,15 @@ resource "kubernetes_deployment" "api" {
         labels = { app = "api" }
       }
       spec {
+        # No security_context override here on purpose — the image's own
+        # docker-entrypoint.sh needs to start as root (the image's actual
+        # default) so it can chown() whatever the PVC mount really looks
+        # like at runtime, then drops to pwuser itself before exec'ing
+        # uvicorn. Forcing run_as_user here would skip straight past that
+        # root phase and break it — this isn't a "belt and suspenders" layer
+        # to add alongside the entrypoint, it's the one place that fix can
+        # actually work, for the same reason a build-time Dockerfile chown
+        # couldn't (see that script's own comment).
         container {
           name  = "api"
           image = var.scraper_image

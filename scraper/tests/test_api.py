@@ -33,15 +33,47 @@ def test_scrape_endpoint_lands_in_lake_then_warehouse(mock_fetch, mock_put_raw, 
         None,  # no hydration state for this page
     )
 
+    # POST /scrape only starts the job; TestClient runs BackgroundTasks to
+    # completion as part of this same call (see main.py::_run_scrape_job's
+    # docstring), so the job is already "done" by the time this returns —
+    # no manual poll loop needed here.
     resp = client.post("/scrape", json={"url": "https://soundcloud.com/a/sets/b"})
 
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["track_count"] == 1
-    assert body["lake_object_key"] == "raw/soundcloud/fake.json"
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    assert resp.json()["status"] == "queued"
+
+    job_resp = client.get(f"/api/scrape/jobs/{job_id}")
+    assert job_resp.status_code == 200
+    job = job_resp.json()
+    assert job["status"] == "done"
+    assert job["result"]["track_count"] == 1
+    assert job["result"]["lake_object_key"] == "raw/soundcloud/fake.json"
+    assert job["error"] is None
 
     mock_put_raw.assert_called_once()
     mock_load.assert_called_once()
+
+
+def test_scrape_job_404_for_unknown_id():
+    resp = client.get("/api/scrape/jobs/not-a-real-job-id")
+
+    assert resp.status_code == 404
+
+
+@patch("app.pipeline.warehouse.load_tracks")
+@patch("app.pipeline.lake.put_raw_scrape")
+@patch("app.pipeline.fetch_html", new_callable=AsyncMock)
+def test_scrape_job_error_surfaces_through_the_status_endpoint(mock_fetch, mock_put_raw, mock_load):
+    mock_fetch.side_effect = RuntimeError("boom")
+
+    resp = client.post("/scrape", json={"url": "https://soundcloud.com/a/sets/b"})
+    job_id = resp.json()["job_id"]
+
+    job = client.get(f"/api/scrape/jobs/{job_id}").json()
+    assert job["status"] == "error"
+    assert job["error"]["status_code"] == 502
+    assert job["result"] is None
 
 
 @patch("app.main.warehouse.list_tracks")
@@ -177,9 +209,9 @@ def test_escape_like_makes_metacharacters_literal():
     assert warehouse.escape_like("%_\\") == "\\%\\_\\\\"
 
 
-@patch("app.warehouse.psycopg.connect")
-def test_list_tracks_sql_uses_escaped_pattern_and_escape_clause(mock_connect):
-    cur = mock_connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+@patch("app.warehouse.pool")
+def test_list_tracks_sql_uses_escaped_pattern_and_escape_clause(mock_pool):
+    cur = mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchall.return_value = []
     cur.fetchone.return_value = {"total": 0}
 
@@ -310,16 +342,20 @@ def test_playlist_catalog_endpoint_shape():
 @patch("app.pipeline.warehouse.load_tracks")
 @patch("app.pipeline.lake.put_raw_scrape")
 @patch("app.pipeline.fetch_html", new_callable=AsyncMock)
-def test_scrape_returns_422_when_page_requires_login(mock_fetch, mock_put_raw, mock_load):
+def test_scrape_job_errors_when_page_requires_login(mock_fetch, mock_put_raw, mock_load):
     mock_fetch.return_value = (
         "<html><body>You may have to log in to view this playlist, or it may have been deleted.</body></html>",
         None,
     )
 
     resp = client.post("/scrape", json={"url": "https://soundcloud.com/discover/sets/weekly::someone"})
+    assert resp.status_code == 202  # a login-required page is still a valid soundcloud.com URL to start a job for
+    job_id = resp.json()["job_id"]
 
-    assert resp.status_code == 422
-    assert "APOLLO_SOUNDCLOUD_COOKIES" in resp.json()["detail"]
+    job = client.get(f"/api/scrape/jobs/{job_id}").json()
+    assert job["status"] == "error"
+    assert job["error"]["status_code"] == 422
+    assert "APOLLO_SOUNDCLOUD_COOKIES" in job["error"]["detail"]
     mock_put_raw.assert_not_called()
     mock_load.assert_not_called()
 
@@ -439,9 +475,9 @@ def test_me_endpoint_requires_login():
     assert resp.status_code == 401
 
 
-@patch("app.warehouse.psycopg.connect")
-def test_list_tracks_sql_joins_favorites_scoped_to_current_user_and_orders_popular(mock_connect):
-    cur = mock_connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+@patch("app.warehouse.pool")
+def test_list_tracks_sql_joins_favorites_scoped_to_current_user_and_orders_popular(mock_pool):
+    cur = mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchall.return_value = []
     cur.fetchone.return_value = {"total": 0}
 
@@ -455,11 +491,44 @@ def test_list_tracks_sql_joins_favorites_scoped_to_current_user_and_orders_popul
     assert params["current_user_id"] == 42
 
 
-@patch("app.warehouse.psycopg.connect")
-def test_add_favorite_is_a_noop_for_unknown_track(mock_connect):
-    cur = mock_connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+@patch("app.warehouse.pool")
+def test_add_favorite_is_a_noop_for_unknown_track(mock_pool):
+    cur = mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchone.return_value = None  # SELECT 1 FROM tracks WHERE id = ... found nothing
 
     assert warehouse.add_favorite(1, 999999) is False
     # Only the existence check ran — no INSERT was attempted for a track that doesn't exist.
     assert cur.execute.call_count == 1
+
+
+@patch("app.warehouse.pool")
+def test_update_track_metadata_sql_shape(mock_pool):
+    conn = mock_pool.connection.return_value.__enter__.return_value
+
+    warehouse.update_track_metadata(
+        "https://soundcloud.com/a/b", playback_count=1, likes_count=2, artwork_url="https://i1.sndcdn.com/x.jpg"
+    )
+
+    sql, params = conn.execute.call_args.args
+    assert "SET playback_count" in sql
+    assert "metadata_refreshed_at = now()" in sql
+    # Deliberately doesn't touch these — a metadata refresh isn't a rescrape.
+    assert "lake_object_key" not in sql
+    assert "source_url" not in sql
+    assert params == {
+        "url": "https://soundcloud.com/a/b", "playback_count": 1, "likes_count": 2,
+        "artwork_url": "https://i1.sndcdn.com/x.jpg",
+    }
+
+
+@patch("app.warehouse.pool")
+def test_tracks_due_for_metadata_refresh_sql_shape(mock_pool):
+    conn = mock_pool.connection.return_value.__enter__.return_value
+    conn.execute.return_value.fetchall.return_value = [{"url": "https://soundcloud.com/a/b"}]
+
+    urls = warehouse.tracks_due_for_metadata_refresh(50)
+
+    assert urls == ["https://soundcloud.com/a/b"]
+    sql, params = conn.execute.call_args.args
+    assert "ORDER BY metadata_refreshed_at ASC NULLS FIRST" in sql
+    assert params == {"limit": 50}

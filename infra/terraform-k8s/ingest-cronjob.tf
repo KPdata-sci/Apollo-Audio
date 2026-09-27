@@ -26,6 +26,10 @@ resource "kubernetes_cron_job_v1" "ingest" {
           }
           spec {
             restart_policy = "Never"
+            # No security_context override — same image as api.tf's
+            # Deployment, whose own comment explains why: its
+            # docker-entrypoint.sh needs to start as root to fix the shared
+            # PVC's ownership itself before dropping to pwuser.
 
             container {
               name  = "ingest"

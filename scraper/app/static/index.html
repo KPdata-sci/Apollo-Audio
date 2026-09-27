@@ -2801,9 +2801,46 @@ async function runJob(job) {
       if (res.status === 401) haltQueue("API key needed");
       return;
     }
-    finishJob(job, "done", { result: body });
+    // POST /scrape only starts the job (202 + job_id) — the actual result
+    // comes from polling GET /api/scrape/jobs/{id} until it's done or error.
+    const outcome = await pollScrapeJob(job, body.job_id);
+    if (outcome === "cancelled") return;
+    if (outcome === "poll-failed") {
+      // Lost the connection to the polling endpoint itself (not the same as
+      // the job erroring — the job may well have finished server-side, we
+      // just couldn't ask) — surface it like any other network failure
+      // rather than leaving the job stuck on "running" forever.
+      finishJob(job, "error", { error: explainError(0, {}, new Error("Lost track of the scrape job")) });
+      return;
+    }
     scheduleLibraryRefresh();
     return;
+  }
+}
+// Polls a started scrape job until it's done or errored. Returns "done",
+// "error" (both already call finishJob), "cancelled", or "poll-failed" (the
+// poll request itself failed/aborted, distinct from the job erroring).
+const SCRAPE_POLL_INTERVAL_MS = 1500;
+async function pollScrapeJob(job, jobId) {
+  for (;;) {
+    const ok = await sleep(SCRAPE_POLL_INTERVAL_MS, job.controller.signal);
+    if (!ok || job.status === "cancelled") return "cancelled";
+    let res, body;
+    try {
+      res = await fetch(apiUrl(`/api/scrape/jobs/${jobId}`), { headers: { ...authHeaders() }, signal: job.controller.signal });
+      body = await readBody(res);
+    } catch (err) {
+      if (job.status === "cancelled" || err.name === "AbortError") return "cancelled";
+      return "poll-failed";
+    }
+    if (job.status === "cancelled") return "cancelled";
+    if (!res.ok) return "poll-failed";
+    if (body.status === "done") { finishJob(job, "done", { result: body.result }); return "done"; }
+    if (body.status === "error") {
+      finishJob(job, "error", { error: explainError(body.error.status_code, { detail: body.error.detail }) });
+      return "error";
+    }
+    // still "queued"/"running" — keep polling
   }
 }
 function finishJob(job, status, extra = {}) {

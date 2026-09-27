@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, HttpUrl
 
@@ -28,6 +29,23 @@ class ScrapeResult(BaseModel):
     track_count: int
     lake_object_key: str
     tracks: list[Track]
+
+
+class ScrapeJobAccepted(BaseModel):
+    job_id: str
+    status: Literal["queued"]
+
+
+class ScrapeJobError(BaseModel):
+    status_code: int
+    detail: str
+
+
+class ScrapeJobStatus(BaseModel):
+    job_id: str
+    status: Literal["queued", "running", "done", "error"]
+    result: ScrapeResult | None = None
+    error: ScrapeJobError | None = None
 
 
 class TrackRow(BaseModel):
