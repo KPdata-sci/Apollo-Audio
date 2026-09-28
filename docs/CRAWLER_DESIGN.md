@@ -2,7 +2,7 @@
 
 This is a plan, not a shipped feature. Phase 1 (single-profile playlist
 discovery) is built and live today as "Browse a profile's playlists" — see
-`discover_playlists()` in `scraper/app/scraping.py` and `POST
+`discover_playlists()` in `scraper/app/scraping/soundcloud.py` and `POST
 /api/discover-playlists`. Everything below Phase 1 is design only.
 
 ## What's actually on offer on soundcloud.com (researched today, live)
@@ -111,7 +111,7 @@ to scrape. No index table needed — it's synchronous and stateless.
   still assumes a person is choosing when to run *discovery* (finding new
   URLs to consider) and when to scrape, for the ToS/courtesy reasons in
   Phase 3 above. This is distinct from what's actually built in
-  `scraper/app/ingest.py`: a scheduled **re-scrape of a small, fixed, hand-
+  `scraper/app/ingestion/ingest.py`: a scheduled **re-scrape of a small, fixed, hand-
   chosen list of URLs** (`APOLLO_INGEST_URLS`), not a crawler that discovers
   new URLs on its own — there's no recursion, no growing frontier, and the
   target set only changes when a person edits the config. It's a much

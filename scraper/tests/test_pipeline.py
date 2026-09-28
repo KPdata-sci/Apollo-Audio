@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.pipeline import DisallowedHostError, refresh_track_metadata
+from app.ingestion.pipeline import DisallowedHostError, refresh_track_metadata
 
 
-@patch("app.pipeline.warehouse.update_track_metadata")
-@patch("app.pipeline.fetch_track_metadata", new_callable=AsyncMock)
+@patch("app.ingestion.pipeline.warehouse.update_track_metadata")
+@patch("app.ingestion.pipeline.fetch_track_metadata", new_callable=AsyncMock)
 def test_refresh_track_metadata_updates_the_warehouse(mock_fetch, mock_update):
     mock_fetch.return_value = {"playback_count": 100, "likes_count": 10, "artwork_url": "https://i1.sndcdn.com/x.jpg"}
 
@@ -20,8 +20,8 @@ def test_refresh_track_metadata_updates_the_warehouse(mock_fetch, mock_update):
     )
 
 
-@patch("app.pipeline.warehouse.update_track_metadata")
-@patch("app.pipeline.fetch_track_metadata", new_callable=AsyncMock)
+@patch("app.ingestion.pipeline.warehouse.update_track_metadata")
+@patch("app.ingestion.pipeline.fetch_track_metadata", new_callable=AsyncMock)
 def test_refresh_track_metadata_is_a_noop_when_nothing_comes_back(mock_fetch, mock_update):
     mock_fetch.return_value = None
 

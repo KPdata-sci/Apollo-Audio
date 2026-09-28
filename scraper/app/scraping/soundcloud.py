@@ -8,7 +8,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
-from .settings import settings
+from ..settings import settings
 
 logger = logging.getLogger("apollo.scraping")
 

@@ -5,7 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from .settings import settings
+from ..settings import settings
 
 logger = logging.getLogger("apollo.warehouse")
 
@@ -332,15 +332,23 @@ def get_user_by_username(username: str) -> dict | None:
     return row
 
 
+class UsernameTakenError(Exception):
+    """Raised by insert_user for a username that already exists — lets callers
+    handle it without importing psycopg themselves (only app.db talks to it)."""
+
+
 def insert_user(username: str, password_hash: str) -> int:
     """Used only by app/create_user.py — there is no HTTP signup endpoint
-    (see CLAUDE.md for why). Raises psycopg.errors.UniqueViolation for a
-    username that's already taken; the caller turns that into a clear CLI
-    error rather than a stack trace."""
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_INSERT_USER_SQL, {"username": username, "password_hash": password_hash})
-            user_id = cur.fetchone()["id"]
+    (see CLAUDE.md for why). Raises UsernameTakenError for a username that's
+    already taken; the caller turns that into a clear CLI error rather than a
+    stack trace."""
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_INSERT_USER_SQL, {"username": username, "password_hash": password_hash})
+                user_id = cur.fetchone()["id"]
+    except psycopg.errors.UniqueViolation as exc:
+        raise UsernameTakenError(username) from exc
     logger.info("Created user %r (id=%d)", username, user_id)
     return user_id
 
@@ -370,7 +378,7 @@ def tracks_due_for_metadata_refresh(limit: int) -> list[str]:
     """Urls ordered oldest-refreshed-first (never-refreshed tracks sort
     first) — a bounded batch per call so one CronJob run stays quick, and the
     whole table cycles through gradually across runs rather than one run
-    trying to refresh everything (see app/refresh_metadata.py)."""
+    trying to refresh everything (see app/ingestion/refresh_metadata.py)."""
     with pool.connection() as conn:
         rows = conn.execute(_TRACKS_DUE_FOR_METADATA_REFRESH_SQL, {"limit": limit}).fetchall()
     return [r["url"] for r in rows]

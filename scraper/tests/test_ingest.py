@@ -1,11 +1,11 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from app import ingest
+from app.ingestion import ingest
 
 
-@patch("app.ingest.settings")
-@patch("app.ingest.scrape_and_store", new_callable=AsyncMock)
+@patch("app.ingestion.ingest.settings")
+@patch("app.ingestion.ingest.scrape_and_store", new_callable=AsyncMock)
 def test_run_ingests_every_configured_url(mock_scrape, mock_settings):
     mock_settings.ingest_urls_list.return_value = [
         "https://soundcloud.com/a/sets/one",
@@ -21,8 +21,8 @@ def test_run_ingests_every_configured_url(mock_scrape, mock_settings):
     mock_scrape.assert_any_call("https://soundcloud.com/b/sets/two")
 
 
-@patch("app.ingest.settings")
-@patch("app.ingest.scrape_and_store", new_callable=AsyncMock)
+@patch("app.ingestion.ingest.settings")
+@patch("app.ingestion.ingest.scrape_and_store", new_callable=AsyncMock)
 def test_run_continues_past_a_failing_url(mock_scrape, mock_settings):
     mock_settings.ingest_urls_list.return_value = [
         "https://soundcloud.com/bad/sets/one",
@@ -41,8 +41,8 @@ def test_run_continues_past_a_failing_url(mock_scrape, mock_settings):
     assert mock_scrape.call_count == 2
 
 
-@patch("app.ingest.settings")
-@patch("app.ingest.scrape_and_store", new_callable=AsyncMock)
+@patch("app.ingestion.ingest.settings")
+@patch("app.ingestion.ingest.scrape_and_store", new_callable=AsyncMock)
 def test_run_is_a_noop_when_no_urls_configured(mock_scrape, mock_settings):
     mock_settings.ingest_urls_list.return_value = []
 

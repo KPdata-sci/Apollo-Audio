@@ -34,7 +34,7 @@ then parsed and upserted into the **data warehouse** (Postgres `tracks` table)
 for querying.
 
 By default the lake is a bind-mounted local directory (`./data/lake`) written
-via [scraper/app/lake.py](scraper/app/lake.py) — no extra container needed, and
+via [scraper/app/ingestion/lake.py](scraper/app/ingestion/lake.py) — no extra container needed, and
 you can browse the raw JSON files directly in Finder/VS Code. That file also
 has an `S3Lake` backend (MinIO/real AWS S3) behind the same interface — set
 `APOLLO_LAKE_BACKEND=s3` once you have an S3-compatible endpoint to point at.
@@ -68,7 +68,7 @@ Open [localhost:8080](http://localhost:8080). It's built for phones first, and
 has three views. On desktop you switch between them with the header switcher;
 on phones, with the bottom tab bar.
 - **Discover:** genre tiles and playlist cards from the curated catalog in
-  [scraper/app/playlists.py](scraper/app/playlists.py). That's about 19
+  [scraper/app/scraping/playlists.py](scraper/app/scraping/playlists.py). That's about 19
   genres of public playlists, each checked with the real scraper when added.
   Tap Scrape on a card, or "Scrape all" for a whole genre.
 - **Add:** paste any playlist, set or profile URL. Or browse a profile's
@@ -155,14 +155,14 @@ untested — no SoundCloud account was available while building it.
 
 ### Scheduled ingest
 
-Beyond the on-demand `POST /scrape`, `scraper/app/ingest.py` re-runs the same
+Beyond the on-demand `POST /scrape`, `scraper/app/ingestion/ingest.py` re-runs the same
 fetch → parse → lake → warehouse pipeline against a fixed list of URLs —
 useful for keeping a small set of playlists you care about up to date without
 opening the UI. It's off by default. Set `APOLLO_INGEST_URLS`
 (comma-separated soundcloud.com URLs, e.g. picked from the catalog) to use it:
 
 ```bash
-docker compose run --rm api python -m app.ingest
+docker compose run --rm api python -m app.ingestion.ingest
 ```
 
 In Kubernetes this runs on a timer via a `CronJob`
@@ -216,9 +216,17 @@ pytest
 ## Repository layout
 
 - `scraper/` — the FastAPI + Playwright app (the standalone API, no UI mounted)
-  - `app/pipeline.py` — the fetch → parse → lake → warehouse sequence shared by `POST /scrape` and `app/ingest.py`
-  - `app/ingest.py` — scheduled re-scrape of a fixed URL list (`APOLLO_INGEST_URLS`), run by `docker compose run` locally or a k8s `CronJob`
-  - `app/playlists.py` — the genre -> playlist catalog behind the dropdowns
+  - `app/scraping/` — talks to SoundCloud and nothing else: returns track dicts, never writes to the lake or warehouse
+    - `soundcloud.py` — headless-browser fetch, hydration/DOM parsing, profile playlist discovery, single-track metadata
+    - `playlists.py` — the genre -> playlist catalog behind the dropdowns
+  - `app/ingestion/` — lands what `app/scraping/` returns, writing to the database only through `app/db/`
+    - `pipeline.py` — the fetch → parse → lake → warehouse sequence shared by `POST /scrape` and the CLIs below
+    - `lake.py` — raw JSON landing (filesystem or S3)
+    - `ingest.py` — scheduled re-scrape of a fixed URL list (`APOLLO_INGEST_URLS`), run by `docker compose run` locally or a k8s `CronJob`
+    - `refresh_metadata.py` — cheap play-count/likes/artwork refresh, run by its own k8s `CronJob`
+  - `app/db/` — the database layer, and the only code that talks to Postgres
+    - `warehouse.py` — connection pool plus every query: loading and listing tracks, stats, favorites, users
+  - `app/main.py` — the FastAPI app; reads through `app/db/`, scrapes through `app/ingestion/`
   - `app/logging_config.py` — logging setup (console + rotating file)
   - `app/static/index.html` — the front end's HTML (scrape, browse, play, download) — served by `frontend/`, not by the API
 - `frontend/` — nginx image serving `scraper/app/static/index.html`, decoupled from the API (talks to it over the network — see `docs/HOSTING.md`)
@@ -233,10 +241,10 @@ pytest
 
 ## Known limitations / next steps
 
-- The CSS selectors in `scraping.py` are scraped from SoundCloud's live DOM
+- The CSS selectors in `scraping/soundcloud.py` are scraped from SoundCloud's live DOM
   (there's no public scraping API) and will break silently if SoundCloud
   changes its frontend — watch for `track_count: 0` responses. Hydration-state
-  reading (see the big comment in `scraping.py`) is the primary path and is
+  reading (see the big comment in `scraping/soundcloud.py`) is the primary path and is
   more robust, but the DOM fallback still matters for profile/stream pages,
   which don't expose track data via hydration at all.
 - `genre` coverage varies a lot by page/playlist — SoundCloud doesn't always

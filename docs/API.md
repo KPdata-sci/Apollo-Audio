@@ -277,7 +277,7 @@ Headline numbers and filter facets for the library view. Read-only, no auth.
 
 ## `GET /api/playlists`
 
-Returns the curated `{genre: [{name, url, note}]}` catalog behind the front end's Discover view. It holds about 19 genres of public playlists, mostly from SoundCloud's own editorial accounts, and each one was checked with the real scraper when added (2026-09-25). `note` flags entries that behave differently, such as profiles instead of sets, or weekly charts that rotate. Edit `scraper/app/playlists.py` to change it. No migration or restart is needed: it's read fresh on each request.
+Returns the curated `{genre: [{name, url, note}]}` catalog behind the front end's Discover view. It holds about 19 genres of public playlists, mostly from SoundCloud's own editorial accounts, and each one was checked with the real scraper when added (2026-09-25). `note` flags entries that behave differently, such as profiles instead of sets, or weekly charts that rotate. Edit `scraper/app/scraping/playlists.py` to change it. No migration or restart is needed: it's read fresh on each request.
 
 **Response `200`** (abridged)
 ```json

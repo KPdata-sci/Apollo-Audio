@@ -14,7 +14,7 @@ Runs on every push and PR to any branch, as four jobs:
   actually run (the latter against its own disposable fixture rows, deleted
   after each test — see that file's docstring for why it's separate from the
   read-only integration file). No Playwright browser install is needed: the
-  tests mock `app.scraping.fetch_html` rather than driving a real browser.
+  tests mock `app.scraping.soundcloud.fetch_html` rather than driving a real browser.
   Coverage is printed to the job log, not enforced — no agreed baseline to
   gate on yet.
 - **terraform** — `terraform fmt -check -recursive`, `terraform init

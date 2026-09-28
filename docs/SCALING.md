@@ -14,10 +14,10 @@ and scroll, expensive and overkill just to refresh three numbers.
 - **Cheaper refresh path — built**: a track's own page hydrates it directly
   (verified against a real page — no SoundCloud `oembed`/`resolve` API
   needed, avoiding a new external dependency and its own ToS considerations),
-  so `scraping.py::fetch_track_metadata` fetches just that one page instead
+  so `scraping/soundcloud.py::fetch_track_metadata` fetches just that one page instead
   of re-scraping whatever source playlist the track came from — no
   scrolling, no re-processing every other track from that source.
-  `app/refresh_metadata.py` (a `python -m app.X` CLI, same shape as
+  `app/ingestion/refresh_metadata.py` (a `python -m app.X` CLI, same shape as
   `ingest.py`) runs this against a bounded, oldest-refreshed-first batch
   (`APOLLO_METADATA_REFRESH_BATCH`, default 50) on its own CronJob
   (`refresh-metadata-cronjob.tf`, every 6 hours by default) — frequent

@@ -19,7 +19,7 @@ the order to do them.
 |---|---|---|
 | Frontend reaches the API on its own hostname (the Windows "tracks not showing" fix) | `frontend/Dockerfile`, `frontend/40-apollo-config.sh`, `docker-compose.yml`, `.env.example`, `infra/terraform-k8s/{frontend.tf,variables.tf,terraform.tfvars.example}` | Checked by curl and on localhost. Deployed to the VM. |
 | New API: `/api/stats`; `/api/tracks` gains `genre`/`source_url`/`sort`; literal search; NUL bytes rejected with 422 | `scraper/app/{main,warehouse,models}.py`, `scraper/tests/test_api.py`, new `scraper/tests/test_warehouse_integration.py` | **Critic WOWED.** 37 tests pass against the live DB. |
-| Curated catalog: 93 playlists, 19 genres | `scraper/app/playlists.py`, new `scraper/tests/test_playlists.py` | Builder checked all 93 with the real scraper. **The independent critic's re-check was stopped before it finished** (see §2). |
+| Curated catalog: 93 playlists, 19 genres | `scraper/app/scraping/playlists.py`, new `scraper/tests/test_playlists.py` | Builder checked all 93 with the real scraper. **The independent critic's re-check was stopped before it finished** (see §2). |
 | UI redesign (Library / Discover / Add, scrape queue, docked player, themes) | `scraper/app/static/index.html` | **Critic WOWED on everything except Discover.** The round-4 Discover fixes are done and pass a quick check, but the critic hasn't re-reviewed them (see §1). |
 | Docs | `README.md`, `CLAUDE.md`, `docs/API.md`, `.env.example`, this file | Updated to match the above. |
 

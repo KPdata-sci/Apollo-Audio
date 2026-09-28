@@ -62,14 +62,14 @@ class Settings(BaseSettings):
     log_max_bytes: int = 5_000_000  # rotate apollo.log once it exceeds this size
     log_backup_count: int = 10      # how many rotated (and gzipped) files to keep
 
-    # Scheduled ingest (scraper/app/ingest.py, run by the k8s CronJob in
+    # Scheduled ingest (scraper/app/ingestion/ingest.py, run by the k8s CronJob in
     # infra/terraform-k8s/ingest-cronjob.tf, or locally via
-    # `docker compose run --rm api python -m app.ingest`). Comma-separated
+    # `docker compose run --rm api python -m app.ingestion.ingest`). Comma-separated
     # soundcloud.com playlist/profile URLs. Empty (off) by default — set your
     # own via APOLLO_INGEST_URLS, e.g. picked from the playlists.py catalog.
     ingest_urls: str = ""
 
-    # Cheap metadata-only refresh (scraper/app/refresh_metadata.py) — how many
+    # Cheap metadata-only refresh (scraper/app/ingestion/refresh_metadata.py) — how many
     # existing tracks (oldest-refreshed-first) one run refreshes
     # playback_count/likes_count/artwork_url for. Bounded per run so a
     # frequent CronJob stays quick; the whole table cycles through gradually
