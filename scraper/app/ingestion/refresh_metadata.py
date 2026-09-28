@@ -6,7 +6,7 @@ goes stale between scrapes"). A fixed-size batch per run
 CronJob run stays quick and the whole table cycles through gradually.
 
 Run locally (docker-compose):
-    docker compose run --rm api python -m app.refresh_metadata
+    docker compose run --rm api python -m app.ingestion.refresh_metadata
 
 Run in Kubernetes: infra/terraform-k8s/refresh-metadata-cronjob.tf runs this
 on a schedule using the same `api` image, same warehouse DSN secret as the
@@ -19,10 +19,10 @@ for one bad URL.
 import asyncio
 import logging
 
-from .logging_config import configure_logging
+from ..logging_config import configure_logging
+from ..settings import settings
+from ..warehouse import tracks_due_for_metadata_refresh
 from .pipeline import DisallowedHostError, FetchError, refresh_track_metadata
-from .settings import settings
-from .warehouse import tracks_due_for_metadata_refresh
 
 configure_logging()
 logger = logging.getLogger("apollo.refresh_metadata")

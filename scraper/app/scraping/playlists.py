@@ -1,4 +1,4 @@
-from .models import PlaylistEntry
+from ..models import PlaylistEntry
 
 # Curated genre -> playlist catalog shown in the front end's one-click
 # "pick a genre, pick a playlist" picker. GET /api/playlists reads this fresh
@@ -6,7 +6,7 @@ from .models import PlaylistEntry
 #
 # Populated and verified 2026-09-25. Every entry below is a PUBLIC
 # soundcloud.com playlist (or, where noted, a profile) that was scraped
-# end-to-end with this app's own scraper (app.scraping.fetch_html +
+# end-to-end with this app's own scraper (app.scraping.soundcloud.fetch_html +
 # parse_html, i.e. exactly what POST /scrape runs) and returned >= 10 tracks
 # whose genres fit the heading it's filed under. Most sets come from
 # SoundCloud's own editorial curator accounts (soundcloud-uk, -hustle,
@@ -27,7 +27,7 @@ from .models import PlaylistEntry
 #   docker run --rm -e PYTHONPATH=/app -v "$PWD/scraper:/app" -w /app \
 #     apollo-api:latest python -c "
 #   import asyncio
-#   from app.playlists import CATALOG
+#   from app.scraping.playlists import CATALOG
 #   from app.scraping import fetch_html, parse_html
 #   async def main():
 #       for genre, entries in CATALOG.items():

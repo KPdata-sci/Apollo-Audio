@@ -159,12 +159,12 @@ actual access-control lever once more than one identity shares it.
   browser sessions.
 - **A startup warning when `APOLLO_API_KEY` is unset**, so "the write
   endpoints are unauthenticated" is a log line you see, not a silent default.
-- **A concurrency semaphore around Playwright** (`scraping.py`) — only one
+- **A concurrency semaphore around Playwright** (`scraping/soundcloud.py`) — only one
   browser session runs per pod at a time, so two simultaneous `/scrape` calls
   in the same pod can't both spin up Firefox and exceed the pod's resource
   limits.
 - **Bounded retry with backoff on page navigation** (`_goto_with_retry` in
-  `scraping.py`) — a transient timeout/network blip no longer fails the whole
+  `scraping/soundcloud.py`) — a transient timeout/network blip no longer fails the whole
   scrape on the first try.
 - **The data lake write is wrapped in try/except** (`main.py`) — a disk-full
   or S3-unreachable failure now returns a clean `502` instead of an unhandled
@@ -242,7 +242,7 @@ lighter deterrent rather than a full account system, on purpose.
 
 ## Scheduled ingest (CronJob)
 
-`infra/terraform-k8s/ingest-cronjob.tf` runs `scraper/app/ingest.py` on a
+`infra/terraform-k8s/ingest-cronjob.tf` runs `scraper/app/ingestion/ingest.py` on a
 timer (daily by default — `ingest_schedule`), re-scraping a fixed list of
 URLs (`ingest_urls`, comma-separated) through the same pipeline as
 `POST /scrape`. It's the same `api` image with a different container command,

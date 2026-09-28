@@ -60,7 +60,7 @@ jobs:
       - name: Run test suite
         env:
           # No hydration/Playwright browser needed here: tests mock
-          # app.scraping.fetch_html rather than driving a real browser
+          # app.scraping.soundcloud.fetch_html rather than driving a real browser
           # (see scraper/tests/test_scraping.py, test_api.py, test_ingest.py).
           APOLLO_WAREHOUSE_DSN: postgresql://apollo:apollo@localhost:5432/apollo
         run: |

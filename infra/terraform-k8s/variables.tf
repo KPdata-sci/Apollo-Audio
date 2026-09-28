@@ -53,7 +53,7 @@ variable "cors_origins" {
 }
 
 variable "ingest_urls" {
-  description = "Comma-separated soundcloud.com playlist/profile URLs the scheduled ingest CronJob scrapes automatically (scraper/app/ingest.py). Empty (default) means the CronJob runs and does nothing — pick URLs from the scraper/app/playlists.py catalog or add your own."
+  description = "Comma-separated soundcloud.com playlist/profile URLs the scheduled ingest CronJob scrapes automatically (scraper/app/ingestion/ingest.py). Empty (default) means the CronJob runs and does nothing — pick URLs from the scraper/app/scraping/playlists.py catalog or add your own."
   type        = string
   default     = ""
 }
@@ -65,7 +65,7 @@ variable "ingest_schedule" {
 }
 
 variable "refresh_metadata_schedule" {
-  description = "Standard cron expression for how often the metadata-refresh CronJob runs (scraper/app/refresh_metadata.py — cheap playback_count/likes_count/artwork_url refresh, no full rescrape). Default is every 6 hours; each run is capped at metadata_refresh_batch tracks, so more frequent runs just cycle through the table faster rather than doing more work per run."
+  description = "Standard cron expression for how often the metadata-refresh CronJob runs (scraper/app/ingestion/refresh_metadata.py — cheap playback_count/likes_count/artwork_url refresh, no full rescrape). Default is every 6 hours; each run is capped at metadata_refresh_batch tracks, so more frequent runs just cycle through the table faster rather than doing more work per run."
   type        = string
   default     = "0 */6 * * *"
 }

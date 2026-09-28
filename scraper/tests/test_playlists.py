@@ -1,4 +1,4 @@
-"""Integrity checks for the curated playlist catalog (app/playlists.py).
+"""Integrity checks for the curated playlist catalog (app/scraping/playlists.py).
 
 These are static checks only — they never touch SoundCloud. Whether each
 entry actually scrapes is verified out-of-band with the real scraper (see the
@@ -9,8 +9,8 @@ from urllib.parse import urlsplit
 import pytest
 
 from app.models import PlaylistEntry
-from app.pipeline import is_allowed_host
-from app.playlists import CATALOG, list_playlists
+from app.ingestion.pipeline import is_allowed_host
+from app.scraping.playlists import CATALOG, list_playlists
 
 ALL_ENTRIES = [(genre, entry) for genre, entries in CATALOG.items() for entry in entries]
 

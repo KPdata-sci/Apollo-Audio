@@ -370,7 +370,7 @@ def tracks_due_for_metadata_refresh(limit: int) -> list[str]:
     """Urls ordered oldest-refreshed-first (never-refreshed tracks sort
     first) — a bounded batch per call so one CronJob run stays quick, and the
     whole table cycles through gradually across runs rather than one run
-    trying to refresh everything (see app/refresh_metadata.py)."""
+    trying to refresh everything (see app/ingestion/refresh_metadata.py)."""
     with pool.connection() as conn:
         rows = conn.execute(_TRACKS_DUE_FOR_METADATA_REFRESH_SQL, {"limit": limit}).fetchall()
     return [r["url"] for r in rows]

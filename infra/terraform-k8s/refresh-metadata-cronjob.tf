@@ -1,6 +1,6 @@
 # Cheap, metadata-only refresh — updates playback_count/likes_count/
 # artwork_url for existing tracks without a full rescrape (see
-# scraper/app/refresh_metadata.py and docs/SCALING.md's "Popularity data
+# scraper/app/ingestion/refresh_metadata.py and docs/SCALING.md's "Popularity data
 # goes stale between scrapes"). Same image as the api Deployment and the
 # ingest CronJob with a different container command — nothing new to build
 # or push.
@@ -33,7 +33,7 @@ resource "kubernetes_cron_job_v1" "refresh_metadata" {
               name              = "refresh-metadata"
               image             = var.scraper_image
               image_pull_policy = "Never"
-              command           = ["python", "-m", "app.refresh_metadata"]
+              command           = ["python", "-m", "app.ingestion.refresh_metadata"]
 
               env {
                 name  = "APOLLO_LAKE_PATH"

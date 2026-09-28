@@ -19,9 +19,9 @@ def test_health():
     assert resp.json() == {"status": "ok"}
 
 
-@patch("app.pipeline.warehouse.load_tracks", return_value=1)
-@patch("app.pipeline.lake.put_raw_scrape", return_value="raw/soundcloud/fake.json")
-@patch("app.pipeline.fetch_html", new_callable=AsyncMock)
+@patch("app.ingestion.pipeline.warehouse.load_tracks", return_value=1)
+@patch("app.ingestion.pipeline.lake.put_raw_scrape", return_value="raw/soundcloud/fake.json")
+@patch("app.ingestion.pipeline.fetch_html", new_callable=AsyncMock)
 def test_scrape_endpoint_lands_in_lake_then_warehouse(mock_fetch, mock_put_raw, mock_load, monkeypatch):
     mock_fetch.return_value = (
         """
@@ -61,9 +61,9 @@ def test_scrape_job_404_for_unknown_id():
     assert resp.status_code == 404
 
 
-@patch("app.pipeline.warehouse.load_tracks")
-@patch("app.pipeline.lake.put_raw_scrape")
-@patch("app.pipeline.fetch_html", new_callable=AsyncMock)
+@patch("app.ingestion.pipeline.warehouse.load_tracks")
+@patch("app.ingestion.pipeline.lake.put_raw_scrape")
+@patch("app.ingestion.pipeline.fetch_html", new_callable=AsyncMock)
 def test_scrape_job_error_surfaces_through_the_status_endpoint(mock_fetch, mock_put_raw, mock_load):
     mock_fetch.side_effect = RuntimeError("boom")
 
@@ -323,7 +323,7 @@ def test_write_endpoints_are_not_etagged():
 
 
 def test_playlist_catalog_endpoint_shape():
-    # Contents are curated in scraper/app/playlists.py and may change freely —
+    # Contents are curated in scraper/app/scraping/playlists.py and may change freely —
     # only the shape is part of the API contract.
     resp = client.get("/api/playlists")
 
@@ -339,9 +339,9 @@ def test_playlist_catalog_endpoint_shape():
             assert isinstance(entry["url"], str)
 
 
-@patch("app.pipeline.warehouse.load_tracks")
-@patch("app.pipeline.lake.put_raw_scrape")
-@patch("app.pipeline.fetch_html", new_callable=AsyncMock)
+@patch("app.ingestion.pipeline.warehouse.load_tracks")
+@patch("app.ingestion.pipeline.lake.put_raw_scrape")
+@patch("app.ingestion.pipeline.fetch_html", new_callable=AsyncMock)
 def test_scrape_job_errors_when_page_requires_login(mock_fetch, mock_put_raw, mock_load):
     mock_fetch.return_value = (
         "<html><body>You may have to log in to view this playlist, or it may have been deleted.</body></html>",

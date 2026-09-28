@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .settings import settings
+from ..settings import settings
 
 logger = logging.getLogger("apollo.lake")
 

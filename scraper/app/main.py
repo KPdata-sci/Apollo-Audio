@@ -12,7 +12,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from . import auth, jobs, lake, playlists, warehouse
+from . import auth, jobs, warehouse
+from .ingestion import lake
+from .scraping import playlists
 from .logging_config import configure_logging, request_id_var
 from .models import (
     DiscoveredPlaylists,
@@ -29,7 +31,7 @@ from .models import (
     TracksPage,
     WarehouseStats,
 )
-from .pipeline import (
+from .ingestion.pipeline import (
     DisallowedHostError,
     FetchError,
     LakeWriteError,
@@ -37,7 +39,7 @@ from .pipeline import (
     is_allowed_host,
     scrape_and_store,
 )
-from .scraping import discover_playlists
+from .scraping.soundcloud import discover_playlists
 from .settings import settings
 
 configure_logging()
@@ -486,6 +488,6 @@ async def discover_playlists_endpoint(request: Request, payload: DiscoverPlaylis
 )
 def list_playlist_catalog() -> dict[str, list[PlaylistEntry]]:
     """Returns the curated, verified `{genre: [{name, url, note}]}` catalog
-    behind the front end's Discover view. Edit scraper/app/playlists.py to
+    behind the front end's Discover view. Edit scraper/app/scraping/playlists.py to
     change it — no migration needed."""
     return playlists.list_playlists()

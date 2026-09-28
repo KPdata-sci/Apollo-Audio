@@ -3,8 +3,9 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from . import lake, warehouse
-from .scraping import fetch_html, fetch_track_metadata, parse_html
+from .. import warehouse
+from . import lake
+from ..scraping.soundcloud import fetch_html, fetch_track_metadata, parse_html
 
 logger = logging.getLogger("apollo.pipeline")
 
@@ -106,11 +107,11 @@ async def scrape_and_store(url: str) -> dict:
 
 async def refresh_track_metadata(url: str) -> bool:
     """Refreshes one existing track's playback_count/likes_count/artwork_url
-    without a full scrape (see scraping.py::fetch_track_metadata) — the cheap
+    without a full scrape (see scraping/soundcloud.py::fetch_track_metadata) — the cheap
     counterpart to scrape_and_store above, for keeping popularity data from
     going stale between full rescrapes (see docs/SCALING.md). Returns False
     (not an error) when the track's page no longer yields any hydration data
-    to refresh from — the caller (app/refresh_metadata.py) logs and moves on,
+    to refresh from — the caller (app/ingestion/refresh_metadata.py) logs and moves on,
     same as scrape_and_store's callers do for a single bad URL."""
     if not is_allowed_host(url):
         raise DisallowedHostError(url)

@@ -3,7 +3,7 @@ lake -> warehouse pipeline as POST /scrape (see pipeline.py), run against a
 fixed list of URLs (APOLLO_INGEST_URLS) instead of one ad-hoc request.
 
 Run locally (docker-compose):
-    docker compose run --rm api python -m app.ingest
+    docker compose run --rm api python -m app.ingestion.ingest
 
 Run in Kubernetes: infra/terraform-k8s/ingest-cronjob.tf runs this on a
 schedule using the same `api` image, with APOLLO_INGEST_URLS/warehouse DSN
@@ -17,7 +17,8 @@ in the list still runs.
 import asyncio
 import logging
 
-from .logging_config import configure_logging
+from ..logging_config import configure_logging
+from ..settings import settings
 from .pipeline import (
     DisallowedHostError,
     FetchError,
@@ -25,7 +26,6 @@ from .pipeline import (
     LoginRequiredError,
     scrape_and_store,
 )
-from .settings import settings
 
 configure_logging()
 logger = logging.getLogger("apollo.ingest")

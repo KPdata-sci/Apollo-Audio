@@ -1,5 +1,5 @@
 # Scheduled ingestion — runs the same fetch/parse/lake/warehouse pipeline as
-# POST /scrape (see scraper/app/pipeline.py), against the fixed URL list in
+# POST /scrape (see scraper/app/ingestion/pipeline.py), against the fixed URL list in
 # var.ingest_urls, on a timer instead of on demand. Uses the same image as
 # the api Deployment with a different container command, so there's nothing
 # new to build or push.
@@ -37,7 +37,7 @@ resource "kubernetes_cron_job_v1" "ingest" {
               # Hand-imported into containerd, not pulled from a registry —
               # same reasoning as the api/frontend Deployments in api.tf/frontend.tf.
               image_pull_policy = "Never"
-              command           = ["python", "-m", "app.ingest"]
+              command           = ["python", "-m", "app.ingestion.ingest"]
 
               env {
                 name  = "APOLLO_LAKE_PATH"

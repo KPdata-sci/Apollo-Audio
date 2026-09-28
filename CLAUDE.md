@@ -49,6 +49,13 @@ Rebuild after changing `scraper/` code: `docker compose up -d --build api`. Afte
 
 ## Architecture
 
+**Package split**: `app/scraping/` (`soundcloud.py`, `playlists.py`) only
+talks to SoundCloud and returns track dicts; it must never import the lake
+or warehouse. `app/ingestion/` (`pipeline.py`, `lake.py`, `ingest.py`,
+`refresh_metadata.py`) is the only place scraped data gets landed, and the
+only side that imports `app.scraping`. `main.py`, `warehouse.py`, `auth.py`
+and friends stay at the top of `app/`, shared by both.
+
 **Pipeline**: Playwright fetches + scrolls the page → `parse_html()` extracts
 tracks → `lake.put_raw_scrape()` writes immutable timestamped JSON (durable,
 replayable record) → `warehouse.load_tracks()` upserts into Postgres
@@ -77,14 +84,14 @@ request — for keeping a small set of playlists fresh without opening the UI.
 Deliberately **not** a crawler (no discovery, no recursion, the URL list only
 changes when a person edits it) — see `docs/CRAWLER_DESIGN.md`'s closing
 section for why that distinction matters for SoundCloud ToS/courtesy. Runs
-via `docker compose run --rm api python -m app.ingest` locally, or a
+via `docker compose run --rm api python -m app.ingestion.ingest` locally, or a
 Kubernetes `CronJob` (`infra/terraform-k8s/ingest-cronjob.tf`) on a schedule.
 One bad URL logs and moves on rather than aborting the batch.
 
 **Cheap metadata refresh** (`refresh_metadata.py`): a lighter sibling to
 ingest — refreshes `playback_count`/`likes_count`/`artwork_url` on existing
 tracks without a full rescrape, by fetching a track's own page instead of
-re-scraping whatever playlist it came from (see `scraping.py`'s
+re-scraping whatever playlist it came from (see `scraping/soundcloud.py`'s
 `fetch_track_metadata`/`_hydration_single_track` — a track's own page
 hydrates it as a top-level `hydratable: "sound"` entry, not nested under a
 `"playlist"` entry). Processes a bounded, oldest-refreshed-first batch
@@ -92,7 +99,7 @@ hydrates it as a top-level `hydratable: "sound"` entry, not nested under a
 frequent `CronJob` (`refresh-metadata-cronjob.tf`, every 6h by default) —
 see `docs/SCALING.md`.
 
-**The non-obvious core of `scraping.py`**: SoundCloud's SSR payload
+**The non-obvious core of `scraping/soundcloud.py`**: SoundCloud's SSR payload
 (`window.__sc_hydration`, read from the static HTML) only fully hydrates the
 first handful of tracks in a playlist — the rest are id-only stubs. Reading
 that *same* object via `page.evaluate()` **after scrolling** gets every track
@@ -122,7 +129,7 @@ link is shown *only* when SoundCloud's own data says `downloadable: true` for
 that specific track, and even then it links to the track's SoundCloud page
 rather than serving a file. Don't build a stream-URL-resolving downloader —
 that was a deliberate choice, not an oversight. Artwork follows the same
-rule: `artwork_url` (see `_upsize_artwork` in `scraping.py`) is always a
+rule: `artwork_url` (see `_upsize_artwork` in `scraping/soundcloud.py`) is always a
 SoundCloud CDN url that the front end hotlinks directly (`<img src=...>`) —
 this app never downloads, caches, or rehosts the image bytes themselves.
 
@@ -201,7 +208,7 @@ no-op).
 
 **Popularity, artwork, and favorites**: `playback_count`/`likes_count`/
 `artwork_url` all come from the same hydration state as `genre`/`downloadable`
-(see `_track_from_hydration` in `scraping.py`), so they share its
+(see `_track_from_hydration` in `scraping/soundcloud.py`), so they share its
 limitation — populated on playlist/set pages, always `null` on profile/stream
 pages (no per-track hydration there at all) *unless* a fallback exists:
 `artwork_url` falls back to the uploader's avatar (`user.avatar_url`) when a
@@ -276,7 +283,7 @@ because GitHub-hosted runners can't reach a Tailscale-only host.
 
 ## Known rough edges (see README "Known limitations" for the full list)
 
-- CSS selectors in `scraping.py` will break silently on a SoundCloud
+- CSS selectors in `scraping/soundcloud.py` will break silently on a SoundCloud
   redesign — a `track_count: 0` response with a "selectors may be stale"
   warning in the logs is the signal to check them.
 - No auth on the API or Adminer — local-only stack as shipped; see
