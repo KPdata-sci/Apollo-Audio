@@ -49,12 +49,16 @@ Rebuild after changing `scraper/` code: `docker compose up -d --build api`. Afte
 
 ## Architecture
 
-**Package split**: `app/scraping/` (`soundcloud.py`, `playlists.py`) only
-talks to SoundCloud and returns track dicts; it must never import the lake
-or warehouse. `app/ingestion/` (`pipeline.py`, `lake.py`, `ingest.py`,
-`refresh_metadata.py`) is the only place scraped data gets landed, and the
-only side that imports `app.scraping`. `main.py`, `warehouse.py`, `auth.py`
-and friends stay at the top of `app/`, shared by both.
+**Package split**: three packages under `scraper/app/`, one job each.
+`app/scraping/` (`soundcloud.py`, `playlists.py`) only talks to SoundCloud
+and returns track dicts; it must never import the lake, the database or
+ingestion. `app/db/` (`warehouse.py`) is the only code that opens a Postgres
+connection: pool, schema-facing queries, favorites and users. `app/ingestion/`
+(`pipeline.py`, `lake.py`, `ingest.py`, `refresh_metadata.py`) joins the two:
+it calls scraping, lands raw JSON in the lake and writes rows through `app.db`.
+The API (`main.py`) reads through `app.db` too. `auth.py`, `models.py`,
+`settings.py` and `logging_config.py` stay at the top of `app/`.
+`tests/test_package_boundaries.py` enforces this.
 
 **Pipeline**: Playwright fetches + scrolls the page → `parse_html()` extracts
 tracks → `lake.put_raw_scrape()` writes immutable timestamped JSON (durable,

@@ -1,8 +1,7 @@
 from unittest.mock import patch
 
-import psycopg
-
 from app import create_user
+from app.db.warehouse import UsernameTakenError
 
 
 @patch("app.create_user.insert_user", return_value=7)
@@ -37,7 +36,7 @@ def test_run_rejects_mismatched_confirmation(mock_getpass):
 @patch("app.create_user.insert_user")
 @patch("app.create_user.getpass.getpass", side_effect=["a long enough password", "a long enough password"])
 def test_run_reports_a_duplicate_username_clearly(mock_getpass, mock_insert_user):
-    mock_insert_user.side_effect = psycopg.errors.UniqueViolation()
+    mock_insert_user.side_effect = UsernameTakenError("alice")
 
     exit_code = create_user.run("kieran")
 

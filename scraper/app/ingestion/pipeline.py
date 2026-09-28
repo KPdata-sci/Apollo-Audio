@@ -3,9 +3,9 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from .. import warehouse
-from . import lake
+from ..db import warehouse
 from ..scraping.soundcloud import fetch_html, fetch_track_metadata, parse_html
+from . import lake
 
 logger = logging.getLogger("apollo.pipeline")
 

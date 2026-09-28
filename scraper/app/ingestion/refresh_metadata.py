@@ -19,9 +19,9 @@ for one bad URL.
 import asyncio
 import logging
 
+from ..db.warehouse import tracks_due_for_metadata_refresh
 from ..logging_config import configure_logging
 from ..settings import settings
-from ..warehouse import tracks_due_for_metadata_refresh
 from .pipeline import DisallowedHostError, FetchError, refresh_track_metadata
 
 configure_logging()

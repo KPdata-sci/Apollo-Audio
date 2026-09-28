@@ -17,11 +17,9 @@ import getpass
 import logging
 import sys
 
-import psycopg
-
 from .auth import hash_password
+from .db.warehouse import UsernameTakenError, insert_user
 from .logging_config import configure_logging
-from .warehouse import insert_user
 
 configure_logging()
 logger = logging.getLogger("apollo.create_user")
@@ -40,7 +38,7 @@ def run(username: str) -> int:
 
     try:
         user_id = insert_user(username, hash_password(password))
-    except psycopg.errors.UniqueViolation:
+    except UsernameTakenError:
         print(f"Username {username!r} is already taken.", file=sys.stderr)
         return 1
 

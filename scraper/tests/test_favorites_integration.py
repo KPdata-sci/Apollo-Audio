@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import psycopg
 import pytest
 
-from app import warehouse
+from app.db import warehouse
 from app.auth import hash_password
 from app.settings import settings
 

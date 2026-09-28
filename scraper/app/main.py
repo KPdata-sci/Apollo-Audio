@@ -12,7 +12,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from . import auth, jobs, warehouse
+from . import auth, jobs
+from .db import warehouse
 from .ingestion import lake
 from .scraping import playlists
 from .logging_config import configure_logging, request_id_var

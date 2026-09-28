@@ -6,7 +6,7 @@ never write — the database they point at may hold real scraped data."""
 import psycopg
 import pytest
 
-from app import warehouse
+from app.db import warehouse
 from app.settings import settings
 
 

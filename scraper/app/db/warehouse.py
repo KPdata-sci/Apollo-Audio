@@ -5,7 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from .settings import settings
+from ..settings import settings
 
 logger = logging.getLogger("apollo.warehouse")
 
@@ -332,15 +332,23 @@ def get_user_by_username(username: str) -> dict | None:
     return row
 
 
+class UsernameTakenError(Exception):
+    """Raised by insert_user for a username that already exists — lets callers
+    handle it without importing psycopg themselves (only app.db talks to it)."""
+
+
 def insert_user(username: str, password_hash: str) -> int:
     """Used only by app/create_user.py — there is no HTTP signup endpoint
-    (see CLAUDE.md for why). Raises psycopg.errors.UniqueViolation for a
-    username that's already taken; the caller turns that into a clear CLI
-    error rather than a stack trace."""
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_INSERT_USER_SQL, {"username": username, "password_hash": password_hash})
-            user_id = cur.fetchone()["id"]
+    (see CLAUDE.md for why). Raises UsernameTakenError for a username that's
+    already taken; the caller turns that into a clear CLI error rather than a
+    stack trace."""
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_INSERT_USER_SQL, {"username": username, "password_hash": password_hash})
+                user_id = cur.fetchone()["id"]
+    except psycopg.errors.UniqueViolation as exc:
+        raise UsernameTakenError(username) from exc
     logger.info("Created user %r (id=%d)", username, user_id)
     return user_id
 

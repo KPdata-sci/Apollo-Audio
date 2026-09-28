@@ -219,12 +219,14 @@ pytest
   - `app/scraping/` — talks to SoundCloud and nothing else: returns track dicts, never writes to the lake or warehouse
     - `soundcloud.py` — headless-browser fetch, hydration/DOM parsing, profile playlist discovery, single-track metadata
     - `playlists.py` — the genre -> playlist catalog behind the dropdowns
-  - `app/ingestion/` — lands what `app/scraping/` returns
+  - `app/ingestion/` — lands what `app/scraping/` returns, writing to the database only through `app/db/`
     - `pipeline.py` — the fetch → parse → lake → warehouse sequence shared by `POST /scrape` and the CLIs below
     - `lake.py` — raw JSON landing (filesystem or S3)
     - `ingest.py` — scheduled re-scrape of a fixed URL list (`APOLLO_INGEST_URLS`), run by `docker compose run` locally or a k8s `CronJob`
     - `refresh_metadata.py` — cheap play-count/likes/artwork refresh, run by its own k8s `CronJob`
-  - `app/main.py`, `app/warehouse.py` — the API and the Postgres layer it and `app/ingestion/` share
+  - `app/db/` — the database layer, and the only code that talks to Postgres
+    - `warehouse.py` — connection pool plus every query: loading and listing tracks, stats, favorites, users
+  - `app/main.py` — the FastAPI app; reads through `app/db/`, scrapes through `app/ingestion/`
   - `app/logging_config.py` — logging setup (console + rotating file)
   - `app/static/index.html` — the front end's HTML (scrape, browse, play, download) — served by `frontend/`, not by the API
 - `frontend/` — nginx image serving `scraper/app/static/index.html`, decoupled from the API (talks to it over the network — see `docs/HOSTING.md`)

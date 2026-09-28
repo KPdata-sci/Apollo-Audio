@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, warehouse
+from app import auth
+from app.db import warehouse
 from app.main import app
 
 client = TestClient(app)
@@ -209,7 +210,7 @@ def test_escape_like_makes_metacharacters_literal():
     assert warehouse.escape_like("%_\\") == "\\%\\_\\\\"
 
 
-@patch("app.warehouse.pool")
+@patch("app.db.warehouse.pool")
 def test_list_tracks_sql_uses_escaped_pattern_and_escape_clause(mock_pool):
     cur = mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchall.return_value = []
@@ -475,7 +476,7 @@ def test_me_endpoint_requires_login():
     assert resp.status_code == 401
 
 
-@patch("app.warehouse.pool")
+@patch("app.db.warehouse.pool")
 def test_list_tracks_sql_joins_favorites_scoped_to_current_user_and_orders_popular(mock_pool):
     cur = mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchall.return_value = []
@@ -491,7 +492,7 @@ def test_list_tracks_sql_joins_favorites_scoped_to_current_user_and_orders_popul
     assert params["current_user_id"] == 42
 
 
-@patch("app.warehouse.pool")
+@patch("app.db.warehouse.pool")
 def test_add_favorite_is_a_noop_for_unknown_track(mock_pool):
     cur = mock_pool.connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
     cur.fetchone.return_value = None  # SELECT 1 FROM tracks WHERE id = ... found nothing
@@ -501,7 +502,7 @@ def test_add_favorite_is_a_noop_for_unknown_track(mock_pool):
     assert cur.execute.call_count == 1
 
 
-@patch("app.warehouse.pool")
+@patch("app.db.warehouse.pool")
 def test_update_track_metadata_sql_shape(mock_pool):
     conn = mock_pool.connection.return_value.__enter__.return_value
 
@@ -521,7 +522,7 @@ def test_update_track_metadata_sql_shape(mock_pool):
     }
 
 
-@patch("app.warehouse.pool")
+@patch("app.db.warehouse.pool")
 def test_tracks_due_for_metadata_refresh_sql_shape(mock_pool):
     conn = mock_pool.connection.return_value.__enter__.return_value
     conn.execute.return_value.fetchall.return_value = [{"url": "https://soundcloud.com/a/b"}]
