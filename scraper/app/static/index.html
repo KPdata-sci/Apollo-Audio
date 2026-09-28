@@ -520,6 +520,7 @@
   .t-actions { grid-area: actions; display: flex; justify-content: flex-end; align-items: center; gap: var(--s-2); }
   .t-play { min-width: 82px; }
   .t-play .i { fill: currentColor; stroke: none; width: 14px; height: 14px; }
+  .t-play.is-blocked .i { fill: none; stroke: currentColor; }
   .t-play.is-current { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .t-fav { color: var(--text-3); }
   .is-fav { color: var(--danger); }
@@ -717,6 +718,9 @@
   .dock.is-playing .dock-label, .dock[data-status="ready"] .dock-label { color: var(--accent-text); }
   .dock:not(.is-playing) .dock-eq { background: var(--surface-3); }
   .dock:not(.is-playing) .dock-eq .eq span { background: var(--text-3); }
+  .dock[data-status="blocked"] .dock-label { color: var(--danger); }
+  .dock-blocked { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin: 0 var(--s-2) var(--s-2); padding: var(--s-2) var(--s-3); font-size: var(--fs-xs); line-height: 1.4; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm); }
+  .dock-blocked .btn { flex: none; }
   .dock.nudge iframe { animation: nudge .8s ease 2; }
   @keyframes nudge { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent); } }
   .dock-title { font-size: var(--fs-sm); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1264,7 +1268,13 @@
     <button type="button" class="btn btn-ghost btn-icon btn-sm dock-min-btn" id="dock-min" aria-expanded="true" aria-controls="dock-body" aria-label="Collapse player"><svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button>
     <button type="button" class="btn btn-ghost btn-icon btn-sm" id="dock-close" aria-label="Stop and close player"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
-  <div class="dock-body" id="dock-body"><div><div class="dock-frame" id="dock-frame"></div></div></div>
+  <div class="dock-body" id="dock-body"><div>
+    <div class="dock-blocked" id="dock-blocked" hidden>
+      <span>SoundCloud only streams this track on its own site, so the embedded player can't play it.</span>
+      <a class="btn btn-secondary btn-sm" id="dock-open" href="#" target="_blank" rel="noopener">Open on SoundCloud<svg class="i i-sm" aria-hidden="true"><use href="#i-external"/></svg></a>
+    </div>
+    <div class="dock-frame" id="dock-frame"></div>
+  </div></div>
 </section>
 
 <div id="toasts" class="toasts" role="region" aria-label="Notifications" aria-live="polite"></div>
@@ -2312,9 +2322,7 @@ function trackHtml(t, i) {
     ? `<a class="t-title" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-fk="title:${fk}" title="${escapeHtml(title)} — open on SoundCloud">${highlight(title, q)}</a>`
     : `<span class="t-title">${highlight(title, q)}</span>`;
   const pb = playButtonState(url, t);
-  const playBtn = url
-    ? `<button type="button" class="btn btn-secondary btn-sm t-play${pb.current ? " is-current" : ""}${pb.playing ? " is-playing" : ""}" data-play="${escapeHtml(url)}" data-fk="play:${fk}" aria-label="${escapeHtml(pb.label)}">${pb.html}</button>`
-    : "";
+  const playBtn = url ? playControlHtml(url, t, fk) : "";
   // Strictly true: only when SoundCloud's own data says the artist enabled downloads.
   const dl = t.downloadable === true && url
     ? `<a class="btn btn-ghost btn-sm t-dl" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-fk="dl:${fk}" title="Opens the track's SoundCloud page — download only if the artist enabled it there" aria-label="Download ${escapeHtml(title)} on SoundCloud (opens the track's page)">${icon("download", "i-sm")}<span class="t-dl-label">Download</span></a>`
@@ -2429,6 +2437,9 @@ tableWrap.addEventListener("click", e => {
   }
   const playBtn = e.target.closest("[data-play]");
   const cover = e.target.closest("[data-cover]");
+  // A track the embed can't stream renders its Play control as a link to the
+  // SoundCloud page — let the browser follow it instead of reopening the dock.
+  if (playBtn && playBtn.tagName === "A") return;
   if (playBtn || cover) {
     const li = e.target.closest(".track");
     const t = li && state.items[Number(li.dataset.idx)];
@@ -2529,7 +2540,21 @@ function scheduleLibraryRefresh() {
    embed. Nothing auto-advances: one track, on explicit user action.
    ========================================================================== */
 const SC_ORIGIN = "https://w.soundcloud.com";
-const player = { url: null, track: null, frame: null, status: "idle", minimized: false, nudgeTimer: null, readyTimer: null };
+const player = { url: null, track: null, frame: null, status: "idle", minimized: false, nudgeTimer: null, readyTimer: null, everPlayed: false };
+// Tracks SoundCloud serves only as encrypted streams: its own site can play
+// them, but the embed widget can't (it asks for the plain MP3 stream, gets a
+// 404, and sits there with a greyed-out ▶). There's no way to tell from our
+// data up front — the widget only finds out when it tries — so remember each
+// one it trips over and render its row as an "Open on SoundCloud" link.
+const EMBED_BLOCKED_KEY = "apollo_embed_blocked";
+const embedBlocked = new Set((() => {
+  try { return JSON.parse(storageGet(EMBED_BLOCKED_KEY) || "[]"); } catch { return []; }
+})());
+function markEmbedBlocked(url) {
+  if (!url || embedBlocked.has(url)) return;
+  embedBlocked.add(url);
+  storageSet(EMBED_BLOCKED_KEY, JSON.stringify([...embedBlocked]));
+}
 // When autoplay works the widget sends "ready" ~0.5s before "play"; only show
 // the press-play instruction if no "play" arrives within this grace period.
 const AUTOPLAY_GRACE_MS = 1800;
@@ -2539,7 +2564,10 @@ const dockMin = $("#dock-min");
 const dockLabel = $("#dock-label");
 const dockFavBtn = $("#dock-fav");
 const dockArt = $("#dock-art");
+const dockBlocked = $("#dock-blocked");
+const dockOpen = $("#dock-open");
 const PLAYER_LABELS = {
+  blocked: "SoundCloud only",
   loading: "Loading player…",
   ready: "Press ▶ in the player to start",
   playing: "Now playing",
@@ -2552,7 +2580,7 @@ function widgetPost(method, value) {
   w.postMessage(JSON.stringify(value === undefined ? { method } : { method, value }), SC_ORIGIN);
 }
 function subscribeWidget() {
-  ["play", "pause", "finish"].forEach(ev => widgetPost("addEventListener", ev));
+  ["play", "pause", "finish", "error"].forEach(ev => widgetPost("addEventListener", ev));
 }
 window.addEventListener("message", e => {
   if (e.origin !== SC_ORIGIN || !player.frame || e.source !== player.frame.contentWindow) return;
@@ -2568,8 +2596,15 @@ window.addEventListener("message", e => {
         if (player.frame === frame && player.status === "loading") setPlayerStatus("ready");
       }, AUTOPLAY_GRACE_MS);
     }
-  } else if (d.method === "play") setPlayerStatus("playing");
-  else if (d.method === "pause") setPlayerStatus("paused");
+  } else if (d.method === "play") { player.everPlayed = true; setPlayerStatus("playing"); }
+  else if (d.method === "pause" || d.method === "error") {
+    // A real pause always follows a play. A pause (or error) before any play,
+    // with nothing loaded, is the widget giving up on a stream it can't get.
+    const v = d.value || {};
+    const failed = d.method === "error" || (!player.everPlayed && !v.loadedProgress && !v.currentPosition);
+    if (failed) { markEmbedBlocked(player.url); setPlayerStatus("blocked"); }
+    else setPlayerStatus("paused");
+  }
   else if (d.method === "finish") setPlayerStatus("finished");
 });
 function setPlayerStatus(status) {
@@ -2581,6 +2616,8 @@ function setPlayerStatus(status) {
   dock.dataset.status = status;
   dock.classList.toggle("is-playing", status === "playing");
   dockLabel.textContent = PLAYER_LABELS[status] || "";
+  dockBlocked.hidden = status !== "blocked";
+  if (status === "blocked") dockOpen.href = player.url;
   syncPlayButtons();
   if (status === prev || !player.track) return;
   const name = `${player.track.title || "track"} by ${player.track.artist || "unknown artist"}`;
@@ -2588,11 +2625,13 @@ function setPlayerStatus(status) {
   else if (status === "paused") announce(`Paused ${name}`);
   else if (status === "finished") announce(`Finished ${name}`);
   else if (status === "ready") announce("Player ready. Press play in the SoundCloud player to start.");
+  else if (status === "blocked") announce(`SoundCloud won't stream ${name} in the embedded player. Use Open on SoundCloud to listen there.`);
 }
 function togglePlay(t) {
   const url = safeHttpUrl(t.url);
   if (!url) return;
   if (player.url === url && player.frame) {
+    if (player.status === "blocked") return;
     // Same track: ask the embed to play/pause; the UI only changes when the
     // widget reports the real state back.
     if (player.status === "playing") { widgetPost("pause"); return; }
@@ -2609,6 +2648,7 @@ function togglePlay(t) {
   // One track at a time: loading another replaces the only iframe.
   player.url = url;
   player.track = t;
+  player.everPlayed = false;
   dockFrame.innerHTML = "";
   const f = document.createElement("iframe");
   f.src = embedUrl(url);
@@ -2658,11 +2698,29 @@ function playButtonState(url, t) {
     label: `${verb} ${t.title || "Untitled"} by ${t.artist || "Unknown artist"}`,
   };
 }
+function playControlHtml(url, t, fk) {
+  const pb = playButtonState(url, t);
+  if (embedBlocked.has(url)) {
+    return `<a class="btn btn-secondary btn-sm t-play is-blocked" href="${escapeHtml(url)}" target="_blank" rel="noopener" data-play="${escapeHtml(url)}" data-fk="play:${fk}" title="SoundCloud only streams this track on its own site" aria-label="Open ${escapeHtml(t.title || "Untitled")} on SoundCloud (the embedded player can't play it)">${icon("external")}<span class="t-play-label">Open</span></a>`;
+  }
+  return `<button type="button" class="btn btn-secondary btn-sm t-play${pb.current ? " is-current" : ""}${pb.playing ? " is-playing" : ""}" data-play="${escapeHtml(url)}" data-fk="play:${fk}" aria-label="${escapeHtml(pb.label)}">${pb.html}</button>`;
+}
 function syncPlayButtons() {
   $$(".track", tableWrap).forEach(li => {
     const t = state.items[Number(li.dataset.idx)];
-    const btn = $("[data-play]", li);
+    let btn = $("[data-play]", li);
     if (!t || !btn) return;
+    if (embedBlocked.has(btn.dataset.play) !== (btn.tagName === "A")) {
+      const hadFocus = document.activeElement === btn;
+      btn.outerHTML = playControlHtml(btn.dataset.play, t, escapeHtml(btn.dataset.play));
+      btn = $("[data-play]", li);
+      if (hadFocus) btn.focus({ preventScroll: true });
+    }
+    if (btn.tagName === "A") {
+      li.classList.toggle("is-current", btn.dataset.play === player.url);
+      li.classList.remove("is-playing");
+      return;
+    }
     const st = playButtonState(btn.dataset.play, t);
     li.classList.toggle("is-current", st.current);
     li.classList.toggle("is-playing", st.playing);

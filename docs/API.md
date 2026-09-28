@@ -295,6 +295,7 @@ Returns the curated `{genre: [{name, url, note}]}` catalog behind the front end'
 This API never streams, stores, or proxies SoundCloud's own media itself:
 
 - **Playback** is done client-side via SoundCloud's own official embeddable player (`w.soundcloud.com/player`), pointed at the track's `url`. Audio is streamed directly from SoundCloud's own infrastructure, one track at a time (starting a new one stops whatever was playing) — there's no batch/background playback.
+  Some tracks (in practice many ad-supported ones) are only offered by SoundCloud as encrypted streams, which the embed can't play: the widget loads with a greyed-out ▶. The front end spots this (the widget reports a pause before it ever played), says so in the dock, and from then on renders that row's Play as an "Open" link to the track's SoundCloud page, remembered per browser in localStorage.
 - **Downloads** are a link to the track's own SoundCloud page, shown only when `downloadable` is `true`. Whether the actual download button appears there, and whether it works, is entirely SoundCloud's and the uploader's own choice — this project does not fetch, cache, or redistribute audio files under any circumstance.
 - **Artwork** (`artwork_url`) is likewise never downloaded or rehosted — the front end hotlinks it directly from SoundCloud's own CDN (`i1.sndcdn.com`). This API only ever stores the *url*, not image bytes.
 
